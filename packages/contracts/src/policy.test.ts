@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChildProfileSchema,
+  DownloadRequestSchema,
   ParentPolicyConfigSchema,
   PolicyDecisionSchema,
 } from './policy';
@@ -15,7 +16,7 @@ describe('policy contracts', () => {
     expect(ChildProfileSchema.safeParse({ id: 'kid-2', displayName: 'Ari', age: 18 }).success).toBe(false);
   });
 
-  it('accepts a parent policy with domains, social controls, and download mode', () => {
+  it('accepts a parent policy with domains, social controls, and high-risk parent gating', () => {
     const result = ParentPolicyConfigSchema.safeParse({
       childAge: 14,
       allowDomains: ['khanacademy.org'],
@@ -29,10 +30,36 @@ describe('policy contracts', () => {
           endMinutes: 1200,
         },
       ],
-      downloadMode: 'require_parent',
+      downloadMode: 'require_parent_high_risk',
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a parent policy that blocks high-risk downloads', () => {
+    const result = ParentPolicyConfigSchema.safeParse({
+      childAge: 10,
+      allowDomains: [],
+      blockDomains: [],
+      teenUnknownWebEnabled: false,
+      socialAccess: [],
+      downloadMode: 'block_high_risk',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects download modes outside the two approved high-risk policies', () => {
+    const result = ParentPolicyConfigSchema.safeParse({
+      childAge: 14,
+      allowDomains: [],
+      blockDomains: [],
+      teenUnknownWebEnabled: false,
+      socialAccess: [],
+      downloadMode: 'allow_safe',
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it('rejects unknown-web enablement for children under 13', () => {
@@ -42,7 +69,7 @@ describe('policy contracts', () => {
       blockDomains: [],
       teenUnknownWebEnabled: true,
       socialAccess: [],
-      downloadMode: 'block_all',
+      downloadMode: 'block_high_risk',
     });
 
     expect(result.success).toBe(false);
@@ -62,9 +89,24 @@ describe('policy contracts', () => {
           endMinutes: 480,
         },
       ],
-      downloadMode: 'allow_safe',
+      downloadMode: 'require_parent_high_risk',
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it('carries archive inspection risk metadata with download requests', () => {
+    const result = DownloadRequestSchema.safeParse({
+      profile: { id: 'kid-1', displayName: 'Ari', age: 14 },
+      url: 'https://downloads.example/game.exe.zip',
+      fileName: 'game.exe.zip',
+      mimeType: 'application/zip',
+      archiveContainsHighRisk: true,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.archiveContainsHighRisk).toBe(true);
+    }
   });
 });
