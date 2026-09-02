@@ -1,4 +1,6 @@
-use crate::model::{DownloadContext, NavigationContext, PolicyDecision, RiskLevel, SiteCategory};
+use crate::model::{
+    DownloadContext, DownloadMode, NavigationContext, PolicyDecision, RiskLevel, SiteCategory,
+};
 
 pub fn evaluate_navigation(ctx: &NavigationContext) -> PolicyDecision {
     if ctx.parent_blocked {
@@ -31,22 +33,34 @@ pub fn evaluate_navigation(ctx: &NavigationContext) -> PolicyDecision {
     PolicyDecision::RequireParent
 }
 
+fn has_suspicious_extension(file_name: &str) -> bool {
+    const HIGH_RISK_EXTENSIONS: [&str; 9] = [
+        "exe", "msi", "bat", "cmd", "ps1", "scr", "com", "js", "vbs",
+    ];
+
+    let normalized = file_name
+        .trim()
+        .trim_end_matches(['.', ' '])
+        .to_ascii_lowercase();
+
+    normalized
+        .split('.')
+        .skip(1)
+        .any(|part| HIGH_RISK_EXTENSIONS.contains(&part.trim()))
+}
+
 pub fn evaluate_download(ctx: &DownloadContext) -> PolicyDecision {
     if ctx.parent_blocked {
         return PolicyDecision::Block;
     }
 
-    let name = ctx.file_name.to_ascii_lowercase();
     let mime = ctx.mime_type.to_ascii_lowercase();
-    let high_risk_extension = [".exe", ".msi", ".bat", ".cmd", ".ps1", ".scr", ".com", ".js", ".vbs"]
-        .iter()
-        .any(|extension| name.ends_with(extension));
     let high_risk_mime = mime.contains("portable-executable")
         || mime.contains("x-msdownload")
         || mime.contains("x-msi")
         || mime.contains("x-bat");
 
-    if high_risk_extension || high_risk_mime {
+    if has_suspicious_extension(&ctx.file_name) || high_risk_mime {
         return PolicyDecision::RequireParent;
     }
 
@@ -54,5 +68,9 @@ pub fn evaluate_download(ctx: &DownloadContext) -> PolicyDecision {
         return PolicyDecision::Allow;
     }
 
-    PolicyDecision::RequireParent
+    match ctx.download_mode {
+        DownloadMode::BlockAll => PolicyDecision::Block,
+        DownloadMode::RequireParent => PolicyDecision::RequireParent,
+        DownloadMode::AllowSafe => PolicyDecision::Allow,
+    }
 }
