@@ -28,6 +28,7 @@ export const DownloadRequestSchema = z.object({
   url: z.url(),
   fileName: z.string().min(1),
   mimeType: z.string().min(1).optional(),
+  archiveContainsHighRisk: z.boolean().default(false),
 });
 export type DownloadRequest = z.infer<typeof DownloadRequestSchema>;
 
@@ -37,7 +38,7 @@ export const DownloadResultSchema = z.object({
 });
 export type DownloadResult = z.infer<typeof DownloadResultSchema>;
 
-export const DownloadModeSchema = z.enum(['block_all', 'require_parent', 'allow_safe']);
+export const DownloadModeSchema = z.enum(['block_high_risk', 'require_parent_high_risk']);
 export type DownloadMode = z.infer<typeof DownloadModeSchema>;
 
 export const SocialAccessModeSchema = z.enum(['blocked', 'allowed', 'time_limited']);
