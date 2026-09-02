@@ -4,10 +4,13 @@ import type {
   ParentPolicyConfig,
   SocialAccessMode,
 } from '@kidos/contracts';
+import SafetySummary, { type SafetySummaryData } from './SafetySummary';
 
 type ParentDashboardProps = {
   authorized: boolean;
   savePolicy: (pin: string, policy: ParentPolicyConfig) => Promise<void>;
+  safetySummary?: SafetySummaryData;
+  clearSafetyEvents?: () => Promise<void>;
 };
 
 function splitDomains(value: string): string[] {
@@ -24,7 +27,12 @@ function timeToMinutes(value: string): number | undefined {
   return hours * 60 + minutes;
 }
 
-export default function ParentDashboard({ authorized, savePolicy }: ParentDashboardProps) {
+export default function ParentDashboard({
+  authorized,
+  savePolicy,
+  safetySummary,
+  clearSafetyEvents,
+}: ParentDashboardProps) {
   const [childAge, setChildAge] = useState(10);
   const [allowDomains, setAllowDomains] = useState('');
   const [blockDomains, setBlockDomains] = useState('');
@@ -190,6 +198,13 @@ export default function ParentDashboard({ authorized, savePolicy }: ParentDashbo
         <button type="submit">Save parent settings</button>
       </form>
       {status ? <p role="status">{status}</p> : null}
+      {safetySummary && clearSafetyEvents ? (
+        <SafetySummary
+          authorized={authorized}
+          summary={safetySummary}
+          clearEvents={clearSafetyEvents}
+        />
+      ) : null}
     </section>
   );
 }
