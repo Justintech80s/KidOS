@@ -1,0 +1,39 @@
+name: KidOS Task 12 E2E CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'feat/task-11-windows-packaging'
+
+jobs:
+  verify-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Run KidOS end-to-end vertical slice tests
+        run: pnpm --filter @kidos/e2e test --run
+      - name: Build shell
+        run: pnpm --filter @kidos/shell build
+      - name: Reject prohibited source patterns
+        shell: bash
+        run: |
+          if git grep -n -E 'std::process::Command|Command::new\(' -- apps packages crates; then
+            echo 'Generic operating-system command execution is not allowed.'
+            exit 1
+          fi
+          if git grep -n -E '(localStorage|sessionStorage).*(pin|PIN)|((pin|PIN).*(localStorage|sessionStorage))' -- apps packages crates; then
+            echo 'Parent PIN must not be stored in browser storage.'
+            exit 1
+          fi
+          if git grep -n -E 'search_history|searchHistoryTable|full_search_history' -- apps packages crates; then
+            echo 'Full search-history persistence is not allowed.'
+            exit 1
+          fi
