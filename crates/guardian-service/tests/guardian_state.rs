@@ -1,7 +1,8 @@
 use guardian_service::{
-    decode_request, load_service_state, validate_request_for_actor, GuardianActor, GuardianMode,
-    GuardianRequest, NonceTracker, PolicySnapshot, RequestEnvelope,
+    decode_request, evaluate_guardian_request, load_service_state, validate_request_for_actor,
+    GuardianActor, GuardianMode, GuardianRequest, NonceTracker, PolicySnapshot, RequestEnvelope,
 };
+use policy_core::PolicyDecision;
 
 #[test]
 fn missing_valid_policy_enters_restricted_safe_mode() {
@@ -63,6 +64,24 @@ fn valid_typed_request_is_decoded() {
     assert_eq!(decoded.session_id, "session-1");
     assert_eq!(decoded.nonce, "nonce-1");
     assert_eq!(decoded.request, GuardianRequest::GuardianStatus);
+}
+
+#[test]
+fn typed_navigation_request_is_evaluated_by_policy_core() {
+    let request = GuardianRequest::EvaluateNavigation {
+        domain: "unknown.example".into(),
+        age: 9,
+        parent_blocked: false,
+        parent_allowed: false,
+        category: "unknown".into(),
+        risk: "high".into(),
+        unknown_web_enabled: false,
+    };
+
+    assert_eq!(
+        evaluate_guardian_request(&request).unwrap(),
+        Some(PolicyDecision::RequireParent)
+    );
 }
 
 #[test]
