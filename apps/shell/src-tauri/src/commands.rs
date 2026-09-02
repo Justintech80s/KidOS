@@ -1,6 +1,10 @@
 use guardian_service::{load_service_state, GuardianMode};
 use policy_core::{
-    evaluate_download, evaluate_navigation, DownloadContext, NavigationContext, PolicyDecision,
+    evaluate_download as policy_evaluate_download,
+    evaluate_navigation as policy_evaluate_navigation,
+    DownloadContext,
+    NavigationContext,
+    PolicyDecision,
 };
 use serde::Serialize;
 
@@ -63,11 +67,11 @@ pub fn plan_workspace_impl(prompt: &str) -> WorkspacePlan {
 }
 
 pub fn evaluate_navigation_impl(url: &str) -> &'static str {
-    decision_name(evaluate_navigation(&NavigationContext::new(url, 10)))
+    decision_name(policy_evaluate_navigation(&NavigationContext::new(url, 10)))
 }
 
 pub fn evaluate_download_impl(file_name: &str, mime_type: &str) -> &'static str {
-    decision_name(evaluate_download(&DownloadContext::new(
+    decision_name(policy_evaluate_download(&DownloadContext::new(
         file_name, mime_type, 10,
     )))
 }
