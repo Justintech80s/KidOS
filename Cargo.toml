@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "apps/shell/src-tauri"
+  "apps/shell/src-tauri",
+  "crates/policy-core"
 ]

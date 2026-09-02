@@ -1,0 +1,25 @@
+name: KidOS Task 3 CI
+
+on:
+  push:
+    branches:
+      - feat/task-3-policy-engine
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify-policy-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run policy tests
+        run: cargo test -p policy-core
+
+      - name: Check policy crate
+        run: cargo check -p policy-core
