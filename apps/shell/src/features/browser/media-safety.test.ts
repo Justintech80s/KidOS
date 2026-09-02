@@ -51,7 +51,7 @@ describe('browser media evaluation', () => {
     const result = await evaluateImageForDisplay(
       new Uint8Array([1, 2, 3]),
       classifierOptions,
-      async (classification) => classification.category === 'adult_nudity' ? 'block' : 'allow',
+      (classification) => classification.category === 'adult_nudity' ? 'block' : 'allow',
     );
     expect(result).toEqual({ state: 'obscure', decision: 'block', reason: 'media_blocked' });
   });
@@ -60,7 +60,7 @@ describe('browser media evaluation', () => {
     const result = await evaluateVideoFrame(
       new Uint8Array([4, 5, 6]),
       classifierOptions,
-      async () => 'require_parent',
+      () => 'require_parent',
     );
     expect(result).toEqual({
       state: 'pause',
