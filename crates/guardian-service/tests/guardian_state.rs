@@ -1,6 +1,6 @@
 use guardian_service::{
-    decode_request, load_service_state, GuardianMode, GuardianRequest, NonceTracker,
-    PolicySnapshot, RequestEnvelope,
+    decode_request, load_service_state, validate_request_for_actor, GuardianActor, GuardianMode,
+    GuardianRequest, NonceTracker, PolicySnapshot, RequestEnvelope,
 };
 
 #[test]
@@ -97,4 +97,19 @@ fn same_nonce_can_be_used_in_a_different_session() {
 
     assert!(tracker.accept(&first).is_ok());
     assert!(tracker.accept(&second).is_ok());
+}
+
+#[test]
+fn child_mode_rejects_privileged_policy_replacement() {
+    let envelope = RequestEnvelope {
+        version: 1,
+        session_id: "session-1".into(),
+        nonce: "nonce-2".into(),
+        request: GuardianRequest::ReplacePolicy {
+            policy_id: "parent-policy".into(),
+        },
+    };
+
+    assert!(validate_request_for_actor(&envelope, GuardianActor::Child).is_err());
+    assert!(validate_request_for_actor(&envelope, GuardianActor::ParentAuthorized).is_ok());
 }
