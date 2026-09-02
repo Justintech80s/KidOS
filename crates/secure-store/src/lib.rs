@@ -1,3 +1,4 @@
+mod authorization;
 mod memory;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -10,6 +11,7 @@ use argon2::{
 };
 use rand_core::OsRng;
 
+pub use authorization::{ParentAuthorization, ParentAuthorizationResult};
 pub use memory::MemorySecretStore;
 #[cfg(target_os = "windows")]
 pub use windows::WindowsSecretStore;
