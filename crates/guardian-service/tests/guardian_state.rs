@@ -34,16 +34,16 @@ fn invalid_current_policy_falls_back_to_last_known_valid() {
 
 #[test]
 fn malformed_ipc_is_rejected() {
-    assert!(decode_request(br#"{\"type\":\"shell\",\"command\":123}"#).is_err());
+    assert!(decode_request(br#"{"type":"shell","command":123}"#).is_err());
 }
 
 #[test]
 fn unknown_protocol_version_is_rejected() {
     let request = br#"{
-        \"version\": 99,
-        \"session_id\": \"session-1\",
-        \"nonce\": \"nonce-1\",
-        \"request\": {\"type\": \"guardian_status\"}
+        "version": 99,
+        "session_id": "session-1",
+        "nonce": "nonce-1",
+        "request": {"type": "guardian_status"}
     }"#;
 
     assert!(decode_request(request).is_err());
@@ -52,10 +52,10 @@ fn unknown_protocol_version_is_rejected() {
 #[test]
 fn valid_typed_request_is_decoded() {
     let request = br#"{
-        \"version\": 1,
-        \"session_id\": \"session-1\",
-        \"nonce\": \"nonce-1\",
-        \"request\": {\"type\": \"guardian_status\"}
+        "version": 1,
+        "session_id": "session-1",
+        "nonce": "nonce-1",
+        "request": {"type": "guardian_status"}
     }"#;
 
     let decoded = decode_request(request).unwrap();
