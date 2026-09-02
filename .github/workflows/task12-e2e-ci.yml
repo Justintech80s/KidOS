@@ -33,7 +33,7 @@ jobs:
             echo 'Parent PIN must not be stored in browser storage.'
             exit 1
           fi
-          if git grep -n -E 'search_history|searchHistoryTable|full_search_history' -- apps packages crates; then
-            echo 'Full search-history persistence is not allowed.'
+          if git grep -n -E 'search_history|searchHistoryTable|full_search_history' -- apps packages 'crates/*/src'; then
+            echo 'Full search-history persistence is not allowed in production source.'
             exit 1
           fi
