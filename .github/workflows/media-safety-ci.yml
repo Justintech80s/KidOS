@@ -1,0 +1,117 @@
+name: KidOS Media Safety CI
+
+on:
+  push:
+    branches:
+      - docs/ai-media-safety-verification
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify-typescript-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Test contracts
+        run: pnpm --filter @kidos/contracts test --run
+
+      - name: Typecheck contracts
+        run: pnpm --filter @kidos/contracts typecheck
+
+      - name: Test media safety
+        run: pnpm --filter @kidos/media-safety test --run
+
+      - name: Typecheck media safety
+        run: pnpm --filter @kidos/media-safety typecheck
+
+  verify-policy-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run policy tests
+        run: cargo test -p policy-core
+
+      - name: Check policy crate
+        run: cargo check -p policy-core
+
+  verify-windows-shell:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run shell tests
+        run: pnpm --filter @kidos/shell test --run
+
+      - name: Build shell
+        run: pnpm --filter @kidos/shell build
+
+      - name: Check Rust workspace
+        run: cargo check --workspace
+
+  verify-source-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject plaintext browser PIN storage
+        shell: bash
+        run: |
+          if git grep -n -E '(localStorage|sessionStorage).*(pin|PIN)|((pin|PIN).*(localStorage|sessionStorage))' -- apps packages crates; then
+            echo 'Parent PIN must not be stored in browser storage.'
+            exit 1
+          fi
+
+      - name: Reject generic OS command execution bridge
+        shell: bash
+        run: |
+          if git grep -n -E 'std::process::Command|Command::new\(' -- apps packages crates; then
+            echo 'Generic operating-system command execution is not allowed in the KidOS safety boundary.'
+            exit 1
+          fi
+
+      - name: Reject raw media persistence identifiers
+        shell: bash
+        run: |
+          if git grep -n -E '(raw_media|rawMedia|persistMediaBytes|saveMediaBytes)' -- apps packages crates; then
+            echo 'Raw viewed media must not be persisted by the safety subsystem.'
+            exit 1
+          fi
