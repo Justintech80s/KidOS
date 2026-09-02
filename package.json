@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm --filter @kidos/shell dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test --run"
+    "test": "pnpm -r test --run",
+    "test:e2e": "pnpm --filter @kidos/e2e test --run"
   }
 }
