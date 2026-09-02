@@ -59,4 +59,21 @@ describe('KidOS parent dashboard', () => {
       downloadMode: 'block_high_risk',
     });
   });
+
+  it('shows aggregate safety decisions only after parent authorization', () => {
+    const clearSafetyEvents = vi.fn(async () => undefined);
+
+    render(
+      <ParentDashboard
+        authorized
+        savePolicy={vi.fn(async () => undefined)}
+        safetySummary={{ total: 9, allowed: 5, blocked: 3, parentGated: 1 }}
+        clearSafetyEvents={clearSafetyEvents}
+      />,
+    );
+
+    expect(screen.getByText('9 safety decisions')).toBeTruthy();
+    expect(screen.getByText('3 blocked')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear safety events' })).toBeTruthy();
+  });
 });
