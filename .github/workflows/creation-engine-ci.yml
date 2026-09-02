@@ -27,3 +27,6 @@ jobs:
 
       - name: Test creation engine
         run: pnpm --filter @kidos/creation-engine test --run
+
+      - name: Typecheck creation engine
+        run: pnpm --filter @kidos/creation-engine typecheck
