@@ -1,4 +1,5 @@
 mod ipc;
+mod parent_policy;
 mod policy_store;
 mod service_state;
 
@@ -7,6 +8,9 @@ use std::{error::Error, fmt};
 pub use ipc::{
     decode_request, evaluate_guardian_request, validate_request_for_actor, GuardianActor,
     GuardianRequest, NonceTracker, RequestEnvelope, GUARDIAN_PROTOCOL_VERSION,
+};
+pub use parent_policy::{
+    GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
 };
 pub use policy_store::PolicySnapshot;
 pub use service_state::{load_service_state, GuardianMode, GuardianState};

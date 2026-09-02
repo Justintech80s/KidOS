@@ -1,7 +1,8 @@
 pub mod commands;
 
 use commands::{evaluate_download, evaluate_navigation, get_guardian_status, plan_workspace};
-use secure_store::SecretStore;
+use guardian_service::{GuardianActor, GuardianPolicyStore, ParentPolicyConfig};
+use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore};
 #[cfg(target_os = "windows")]
 use secure_store::WindowsSecretStore;
 
@@ -18,6 +19,25 @@ pub fn configure_parent_pin_with_store(
     store
         .put_secret(PARENT_PIN_KEY, pin)
         .map_err(|_| "unable to protect parent PIN".into())
+}
+
+pub fn save_parent_policy_with_authorization<S: SecretStore>(
+    authorization: &mut ParentAuthorization<S>,
+    guardian: &mut GuardianPolicyStore,
+    pin: &str,
+    now_seconds: u64,
+    policy: ParentPolicyConfig,
+) -> Result<(), String> {
+    match authorization
+        .verify(pin, now_seconds)
+        .map_err(|_| "unable to verify parent PIN".to_string())?
+    {
+        ParentAuthorizationResult::Authorized => guardian
+            .replace_parent_policy(GuardianActor::ParentAuthorized, policy)
+            .map_err(|error| error.to_string()),
+        ParentAuthorizationResult::Denied => Err("parent PIN was not accepted".into()),
+        ParentAuthorizationResult::Locked => Err("parent PIN entry is temporarily locked".into()),
+    }
 }
 
 #[cfg(target_os = "windows")]

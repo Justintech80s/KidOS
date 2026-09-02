@@ -20,6 +20,12 @@ pub enum RiskLevel {
     High,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadMode {
+    BlockHighRisk,
+    RequireParentHighRisk,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NavigationContext {
     pub domain: String,
@@ -58,6 +64,8 @@ pub struct DownloadContext {
     pub age: u8,
     pub parent_blocked: bool,
     pub parent_allowed: bool,
+    pub download_mode: DownloadMode,
+    pub archive_contains_high_risk: bool,
 }
 
 impl DownloadContext {
@@ -68,9 +76,13 @@ impl DownloadContext {
             age,
             parent_blocked: false,
             parent_allowed: false,
+            download_mode: DownloadMode::RequireParentHighRisk,
+            archive_contains_high_risk: false,
         }
     }
 
     pub fn with_parent_blocked(mut self, value: bool) -> Self { self.parent_blocked = value; self }
     pub fn with_parent_allowed(mut self, value: bool) -> Self { self.parent_allowed = value; self }
+    pub fn with_download_mode(mut self, value: DownloadMode) -> Self { self.download_mode = value; self }
+    pub fn with_archive_contains_high_risk(mut self, value: bool) -> Self { self.archive_contains_high_risk = value; self }
 }
