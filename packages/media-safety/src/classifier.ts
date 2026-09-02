@@ -22,21 +22,53 @@ export type ClassifyMediaOptions = {
   localConfidenceThreshold?: number;
 };
 
+const failClosedLocal: MediaClassification = {
+  category: 'uncertain',
+  confidence: 0,
+  source: 'local',
+  risk: 'high',
+};
+
+async function tryRemote(
+  input: MediaInput,
+  options: ClassifyMediaOptions,
+  fallback: MediaClassification,
+): Promise<MediaClassification> {
+  if (!options.remoteEnabled || !options.remoteClassifier) {
+    return fallback;
+  }
+
+  try {
+    const remoteRaw = await options.remoteClassifier(input);
+    const remoteParsed = MediaClassificationSchema.safeParse(remoteRaw);
+
+    if (!remoteParsed.success || remoteParsed.data.source !== 'remote') {
+      return fallback;
+    }
+
+    return remoteParsed.data;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function classifyMedia(
   input: MediaInput,
   options: ClassifyMediaOptions,
 ): Promise<MediaClassification> {
   const threshold = options.localConfidenceThreshold ?? 0.8;
-  const localRaw = await options.localClassifier(input);
+
+  let localRaw: unknown;
+  try {
+    localRaw = await options.localClassifier(input);
+  } catch {
+    return tryRemote(input, options, failClosedLocal);
+  }
+
   const localParsed = MediaClassificationSchema.safeParse(localRaw);
 
   if (!localParsed.success || localParsed.data.source !== 'local') {
-    return {
-      category: 'uncertain',
-      confidence: 0,
-      source: 'local',
-      risk: 'high',
-    };
+    return tryRemote(input, options, failClosedLocal);
   }
 
   const local = localParsed.data;
@@ -45,20 +77,9 @@ export async function classifyMedia(
     local.risk === 'high' ||
     local.confidence < threshold;
 
-  if (!needsEscalation || !options.remoteEnabled || !options.remoteClassifier) {
+  if (!needsEscalation) {
     return local;
   }
 
-  try {
-    const remoteRaw = await options.remoteClassifier(input);
-    const remoteParsed = MediaClassificationSchema.safeParse(remoteRaw);
-
-    if (!remoteParsed.success || remoteParsed.data.source !== 'remote') {
-      return local;
-    }
-
-    return remoteParsed.data;
-  } catch {
-    return local;
-  }
+  return tryRemote(input, options, local);
 }

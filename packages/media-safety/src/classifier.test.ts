@@ -61,4 +61,28 @@ describe('classifyMedia', () => {
     });
     expect(result).toEqual(localResult);
   });
+
+  it('fails closed when the local classifier throws', async () => {
+    const result = await classifyMedia(fakeInput, {
+      remoteEnabled: false,
+      localClassifier: async () => { throw new Error('local model unavailable'); },
+    });
+    expect(result).toEqual({ category: 'uncertain', confidence: 0, source: 'local', risk: 'high' });
+  });
+
+  it('escalates malformed local output when remote moderation is enabled', async () => {
+    const remoteClassifier = vi.fn(async () => ({
+      category: 'safe' as const,
+      confidence: 0.98,
+      source: 'remote' as const,
+      risk: 'low' as const,
+    }));
+    const result = await classifyMedia(fakeInput, {
+      remoteEnabled: true,
+      localClassifier: async () => ({ category: 'unknown', confidence: 4 } as never),
+      remoteClassifier,
+    });
+    expect(remoteClassifier).toHaveBeenCalledOnce();
+    expect(result).toEqual({ category: 'safe', confidence: 0.98, source: 'remote', risk: 'low' });
+  });
 });
