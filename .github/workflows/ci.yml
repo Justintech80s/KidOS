@@ -1,0 +1,39 @@
+name: KidOS Windows Release CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'feat/task-11-windows-packaging'
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Verify packaging metadata
+        run: node tests/packaging/tauri-config.test.mjs
+      - name: Run JavaScript tests
+        run: pnpm -r test --run
+      - name: Build JavaScript workspaces
+        run: pnpm -r build
+      - name: Run Rust tests
+        run: cargo test --workspace
+      - name: Check Rust workspace
+        run: cargo check --workspace
+      - name: Build KidOS Windows installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Windows-Installer
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
