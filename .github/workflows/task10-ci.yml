@@ -1,0 +1,20 @@
+name: KidOS Task 10 CI
+
+on:
+  pull_request:
+    paths:
+      - 'crates/guardian-service/**'
+      - 'apps/shell/src/features/parent/**'
+      - '.github/workflows/task10-ci.yml'
+  push:
+    branches:
+      - 'feat/task-10-safety-events'
+
+jobs:
+  verify-safety-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test safety event storage
+        run: cargo test -p guardian-service --test safety_events
