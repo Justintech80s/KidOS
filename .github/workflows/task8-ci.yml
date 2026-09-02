@@ -1,0 +1,27 @@
+name: KidOS Task 8 CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/src/features/browser/**'
+      - 'apps/shell/src/features/home/**'
+      - 'apps/shell/src/lib/**'
+      - '.github/workflows/task8-ci.yml'
+
+jobs:
+  verify-task8:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test protected navigation and child web flow
+        run: pnpm --filter @kidos/shell test --run src/features/browser/protected-navigation.test.ts src/features/home/ChildHome.test.tsx
+      - name: Build shell
+        run: pnpm --filter @kidos/shell build

@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { KidOSApi } from '../../lib/kidos-api';
 import ChildHome from './ChildHome';
+
+afterEach(cleanup);
 
 const api: KidOSApi = {
   async planWorkspace(prompt) {
@@ -19,6 +21,13 @@ const api: KidOSApi = {
   },
   async guardianStatus() {
     return 'healthy';
+  },
+};
+
+const allowApi: KidOSApi = {
+  ...api,
+  async evaluateNavigation() {
+    return 'allow';
   },
 };
 
@@ -45,5 +54,19 @@ describe('KidOS protected child flows', () => {
 
     expect(await screen.findByText('Parent approval required')).toBeTruthy();
     expect(screen.queryByText('Opening https://unknown.example')).toBeNull();
+  });
+
+  it('shows the enforced Google SafeSearch URL before an allowed load', async () => {
+    render(<ChildHome api={allowApi} />);
+
+    fireEvent.change(screen.getByLabelText('Protected web address'), {
+      target: { value: 'https://www.google.com/search?q=planets' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Opening https://www.google.com/search?');
+    expect(status.textContent).toContain('q=planets');
+    expect(status.textContent).toContain('safe=active');
   });
 });
