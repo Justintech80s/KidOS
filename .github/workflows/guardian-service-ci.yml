@@ -1,0 +1,18 @@
+name: KidOS Guardian Service CI
+
+on:
+  pull_request:
+    paths:
+      - 'crates/guardian-service/**'
+      - 'crates/policy-core/**'
+      - 'Cargo.toml'
+      - '.github/workflows/guardian-service-ci.yml'
+
+jobs:
+  verify-guardian-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test Guardian Service
+        run: cargo test -p guardian-service
