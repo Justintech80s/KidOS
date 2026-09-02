@@ -1,0 +1,49 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import type { KidOSApi } from '../../lib/kidos-api';
+import ChildHome from './ChildHome';
+
+const api: KidOSApi = {
+  async planWorkspace(prompt) {
+    return {
+      kind: 'story',
+      title: prompt.includes('space') ? 'Space Story' : 'Story',
+      capabilities: ['story', 'export_project'],
+    };
+  },
+  async evaluateNavigation() {
+    return 'require_parent';
+  },
+  async evaluateDownload() {
+    return 'require_parent';
+  },
+  async guardianStatus() {
+    return 'healthy';
+  },
+};
+
+describe('KidOS protected child flows', () => {
+  it('turns a creation request into the returned safe workspace', async () => {
+    render(<ChildHome api={api} />);
+
+    fireEvent.change(screen.getByLabelText('Ask KidOS'), {
+      target: { value: 'make a story about space' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByRole('heading', { name: 'Space Story' })).toBeTruthy();
+    expect(screen.getByText('Story workspace')).toBeTruthy();
+  });
+
+  it('shows a parent approval gate instead of opening require-parent navigation', async () => {
+    render(<ChildHome api={api} />);
+
+    fireEvent.change(screen.getByLabelText('Protected web address'), {
+      target: { value: 'https://unknown.example' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
+
+    expect(await screen.findByText('Parent approval required')).toBeTruthy();
+    expect(screen.queryByText('Opening https://unknown.example')).toBeNull();
+  });
+});

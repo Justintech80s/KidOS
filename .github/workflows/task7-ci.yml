@@ -1,0 +1,33 @@
+name: KidOS Task 7 CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/**'
+      - 'crates/policy-core/**'
+      - 'crates/guardian-service/**'
+      - '.github/workflows/task7-ci.yml'
+
+jobs:
+  verify-task7-rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test protected Tauri commands
+        run: cargo test -p kidos-shell --test protected_commands
+
+  verify-task7-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test protected child flows
+        run: pnpm --filter @kidos/shell test --run src/features/home/ChildHome.test.tsx
