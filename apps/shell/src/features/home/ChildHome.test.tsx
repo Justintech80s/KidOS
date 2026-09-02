@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { KidOSApi } from '../../lib/kidos-api';
 import ChildHome from './ChildHome';
+
+afterEach(cleanup);
 
 const api: KidOSApi = {
   async planWorkspace(prompt) {
