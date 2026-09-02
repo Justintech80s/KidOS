@@ -1,0 +1,32 @@
+name: KidOS Task 9 CI
+
+on:
+  pull_request:
+    paths:
+      - 'packages/contracts/src/policy.ts'
+      - 'packages/contracts/src/policy.test.ts'
+      - 'crates/policy-core/**'
+      - 'crates/guardian-service/**'
+      - 'apps/shell/src/features/parent/**'
+      - 'apps/shell/src/lib/**'
+      - 'apps/shell/src-tauri/**'
+      - '.github/workflows/task9-ci.yml'
+
+jobs:
+  verify-task9-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test parent policy contracts
+        run: pnpm --filter @kidos/contracts test --run src/policy.test.ts
+      - name: Test download policy
+        run: cargo test -p policy-core --test download_controls
