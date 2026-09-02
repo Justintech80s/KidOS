@@ -1,0 +1,23 @@
+name: KidOS Task 10 Parent UI CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/src/features/parent/**'
+      - '.github/workflows/task10-ui-ci.yml'
+
+jobs:
+  verify-parent-safety-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test parent safety summary
+        run: pnpm --filter @kidos/shell test --run src/features/parent/SafetySummary.test.tsx
+      - name: Build shell
+        run: pnpm --filter @kidos/shell build
