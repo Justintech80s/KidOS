@@ -22,6 +22,13 @@ const api: KidOSApi = {
   },
 };
 
+const allowApi: KidOSApi = {
+  ...api,
+  async evaluateNavigation() {
+    return 'allow';
+  },
+};
+
 describe('KidOS protected child flows', () => {
   it('turns a creation request into the returned safe workspace', async () => {
     render(<ChildHome api={api} />);
@@ -45,5 +52,19 @@ describe('KidOS protected child flows', () => {
 
     expect(await screen.findByText('Parent approval required')).toBeTruthy();
     expect(screen.queryByText('Opening https://unknown.example')).toBeNull();
+  });
+
+  it('shows the enforced Google SafeSearch URL before an allowed load', async () => {
+    render(<ChildHome api={allowApi} />);
+
+    fireEvent.change(screen.getByLabelText('Protected web address'), {
+      target: { value: 'https://www.google.com/search?q=planets' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Opening https://www.google.com/search?');
+    expect(status.textContent).toContain('q=planets');
+    expect(status.textContent).toContain('safe=active');
   });
 });
