@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+use policy_core::{
+    evaluate_navigation, NavigationContext, PolicyDecision, RiskLevel, SiteCategory,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::GuardianError;
@@ -10,6 +13,15 @@ pub const GUARDIAN_PROTOCOL_VERSION: u16 = 1;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GuardianRequest {
     GuardianStatus,
+    EvaluateNavigation {
+        domain: String,
+        age: u8,
+        parent_blocked: bool,
+        parent_allowed: bool,
+        category: String,
+        risk: String,
+        unknown_web_enabled: bool,
+    },
     ReplacePolicy { policy_id: String },
 }
 
@@ -42,6 +54,46 @@ pub fn decode_request(bytes: &[u8]) -> Result<RequestEnvelope, GuardianError> {
     }
 
     Ok(envelope)
+}
+
+pub fn evaluate_guardian_request(
+    request: &GuardianRequest,
+) -> Result<Option<PolicyDecision>, GuardianError> {
+    let GuardianRequest::EvaluateNavigation {
+        domain,
+        age,
+        parent_blocked,
+        parent_allowed,
+        category,
+        risk,
+        unknown_web_enabled,
+    } = request
+    else {
+        return Ok(None);
+    };
+
+    let category = match category.as_str() {
+        "unknown" => SiteCategory::Unknown,
+        "approved" => SiteCategory::Approved,
+        "educational" => SiteCategory::Educational,
+        "prohibited" => SiteCategory::Prohibited,
+        value => return Err(GuardianError::InvalidPolicyInput(value.to_string())),
+    };
+    let risk = match risk.as_str() {
+        "low" => RiskLevel::Low,
+        "normal" => RiskLevel::Normal,
+        "high" => RiskLevel::High,
+        value => return Err(GuardianError::InvalidPolicyInput(value.to_string())),
+    };
+
+    let context = NavigationContext::new(domain.clone(), *age)
+        .with_parent_blocked(*parent_blocked)
+        .with_parent_allowed(*parent_allowed)
+        .with_category(category)
+        .with_risk(risk)
+        .with_unknown_web_enabled(*unknown_web_enabled);
+
+    Ok(Some(evaluate_navigation(&context)))
 }
 
 pub fn validate_request_for_actor(
