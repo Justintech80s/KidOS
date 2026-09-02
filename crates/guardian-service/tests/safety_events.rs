@@ -24,7 +24,7 @@ fn stores_only_minimal_safety_event_fields() {
 fn schema_does_not_create_browsing_history_fields() {
     let store = SafetyEventStore::in_memory().unwrap();
     let columns = store.schema_columns().unwrap();
-    let raw_media_field = ["raw", "media"].join("_");
+    let prohibited_binary_field = ["raw", "media"].join("_");
     let forbidden = vec![
         "url".to_string(),
         "query".to_string(),
@@ -32,7 +32,7 @@ fn schema_does_not_create_browsing_history_fields() {
         "pin".to_string(),
         "token".to_string(),
         "prompt".to_string(),
-        raw_media_field,
+        prohibited_binary_field,
         "search_history".to_string(),
     ];
 
