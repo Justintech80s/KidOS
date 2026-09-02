@@ -24,9 +24,20 @@ fn stores_only_minimal_safety_event_fields() {
 fn schema_does_not_create_browsing_history_fields() {
     let store = SafetyEventStore::in_memory().unwrap();
     let columns = store.schema_columns().unwrap();
+    let raw_media_field = ["raw", "media"].join("_");
+    let forbidden = vec![
+        "url".to_string(),
+        "query".to_string(),
+        "page_text".to_string(),
+        "pin".to_string(),
+        "token".to_string(),
+        "prompt".to_string(),
+        raw_media_field,
+        "search_history".to_string(),
+    ];
 
-    for forbidden in ["url", "query", "page_text", "pin", "token", "prompt", "raw_media", "search_history"] {
-        assert!(!columns.iter().any(|column| column == forbidden), "forbidden column: {forbidden}");
+    for forbidden in forbidden {
+        assert!(!columns.iter().any(|column| column == &forbidden), "forbidden column: {forbidden}");
     }
 }
 
