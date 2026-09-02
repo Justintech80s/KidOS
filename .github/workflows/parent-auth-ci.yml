@@ -1,0 +1,40 @@
+name: KidOS Parent Authorization CI
+
+on:
+  pull_request:
+    paths:
+      - 'crates/secure-store/**'
+      - 'apps/shell/src/features/onboarding/**'
+      - 'apps/shell/src-tauri/**'
+      - 'Cargo.toml'
+      - '.github/workflows/parent-auth-ci.yml'
+
+jobs:
+  verify-secure-store:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test secure store
+        run: cargo test -p secure-store
+
+  verify-parent-setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run shell tests
+        run: pnpm --filter @kidos/shell test --run
+
+  verify-windows-parent-command:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test Windows parent command boundary
+        run: cargo test -p kidos-shell --test parent_pin
