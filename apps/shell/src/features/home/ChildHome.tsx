@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import type { WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
+import { prepareProtectedNavigation } from '../browser/protected-navigation';
 
 function workspaceLabel(kind: WorkspacePlan['kind']) {
   switch (kind) {
@@ -31,10 +32,13 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
     const destination = url.trim();
     if (!destination) return;
 
-    const decision = await api.evaluateNavigation(destination);
-    if (decision === 'allow') {
-      setNavigationState(`Opening ${destination}`);
-    } else if (decision === 'block') {
+    const result = await prepareProtectedNavigation(destination, (checkedUrl) =>
+      api.evaluateNavigation(checkedUrl),
+    );
+
+    if (result.state === 'load') {
+      setNavigationState(`Opening ${result.url}`);
+    } else if (result.state === 'blocked') {
       setNavigationState('Site blocked by KidOS');
     } else {
       setNavigationState('Parent approval required');
