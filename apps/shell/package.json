@@ -14,7 +14,7 @@
     "@kidos/media-safety": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.9"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",
