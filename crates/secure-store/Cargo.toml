@@ -5,3 +5,9 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+argon2 = "0.5.3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "4.2.0", default-features = false, features = ["v1", "windows-native-keyring-store"] }
