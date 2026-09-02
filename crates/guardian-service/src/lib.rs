@@ -1,6 +1,7 @@
 mod ipc;
 mod parent_policy;
 mod policy_store;
+mod safety_events;
 mod service_state;
 
 use std::{error::Error, fmt};
@@ -13,6 +14,7 @@ pub use parent_policy::{
     GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
 };
 pub use policy_store::PolicySnapshot;
+pub use safety_events::{SafetyEvent, SafetyEventError, SafetyEventStore, SafetyEventSummary};
 pub use service_state::{load_service_state, GuardianMode, GuardianState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
