@@ -5,6 +5,7 @@ on:
     paths:
       - 'crates/secure-store/**'
       - 'apps/shell/src/features/onboarding/**'
+      - 'apps/shell/src-tauri/**'
       - 'Cargo.toml'
       - '.github/workflows/parent-auth-ci.yml'
 
@@ -29,3 +30,11 @@ jobs:
         run: pnpm install
       - name: Run shell tests
         run: pnpm --filter @kidos/shell test --run
+
+  verify-windows-parent-command:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test Windows parent command boundary
+        run: cargo test -p kidos-shell --test parent_pin
