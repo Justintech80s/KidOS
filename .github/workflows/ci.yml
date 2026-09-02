@@ -18,7 +18,7 @@ jobs:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Verify packaging metadata
         run: node tests/packaging/tauri-config.test.mjs
       - name: Run JavaScript tests
