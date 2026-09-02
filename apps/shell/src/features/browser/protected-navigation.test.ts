@@ -19,6 +19,7 @@ describe('KidOS protected navigation', () => {
     );
 
     expect(result.state).toBe('load');
+    if (result.state !== 'load') throw new Error('expected loadable navigation');
     expect(result.url).toContain('q=solar+system');
     expect(result.url).toContain('safe=active');
   });
@@ -30,6 +31,7 @@ describe('KidOS protected navigation', () => {
     );
 
     expect(result.state).toBe('load');
+    if (result.state !== 'load') throw new Error('expected loadable navigation');
     expect(result.url).toContain('adlt=strict');
   });
 
@@ -37,6 +39,7 @@ describe('KidOS protected navigation', () => {
     const result = await prepareProtectedNavigation('https://www.youtube.com/watch?v=abc', allow);
 
     expect(result.state).toBe('load');
+    if (result.state !== 'load') throw new Error('expected loadable navigation');
     expect(result.requestHeaders).toEqual({ 'YouTube-Restrict': 'Strict' });
   });
 
