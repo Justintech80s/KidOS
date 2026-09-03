@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import test from 'node:test';
 
-const root = new URL('../..', import.meta.url).pathname;
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const root = resolve(testDirectory, '../..');
 const roots = ['apps/shell/src', 'apps/shell/src-tauri/src', 'crates/guardian-service/src', 'packages/contracts/src'];
 const extensions = new Set(['.ts', '.tsx', '.rs']);
 
@@ -12,7 +14,7 @@ function filesUnder(path) {
   for (const entry of readdirSync(path)) {
     const full = join(path, entry);
     if (statSync(full).isDirectory()) result.push(...filesUnder(full));
-    else if ([...extensions].some((extension) => full.endsWith(extension))) result.push(full);
+    else if (extensions.has(extname(full))) result.push(full);
   }
   return result;
 }
