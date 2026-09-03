@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import type { LockdownState, ParentPolicyConfig } from '@kidos/contracts';
+import type { LockdownState, LockdownStatus, ParentPolicyConfig } from '@kidos/contracts';
 import { planWorkspace } from '@kidos/creation-engine';
 import ChildHome from '../../apps/shell/src/features/home/ChildHome';
 import ParentDashboard from '../../apps/shell/src/features/parent/ParentDashboard';
-import LockdownSettings from '../../apps/shell/src/features/parent/LockdownSettings';
 import type { KidOSApi, PolicyDecision } from '../../apps/shell/src/lib/kidos-api';
 
 const defaultPolicy: ParentPolicyConfig = {
@@ -14,6 +13,12 @@ const defaultPolicy: ParentPolicyConfig = {
   socialAccess: [],
   downloadMode: 'block_high_risk',
 };
+
+const windowsCapability = {
+  platform: 'windows',
+  supported: true,
+  mechanism: 'assigned_access',
+} as const;
 
 function isHighRiskDownload(fileName: string) {
   const lower = fileName.toLowerCase();
@@ -39,6 +44,19 @@ export function KidOSDesktopHarness({
   const [downloadState, setDownloadState] = useState<string | null>(null);
   const [lockdownState, setLockdownState] = useState<LockdownState>(initialLockdownState);
   const [unlockExpiresAt, setUnlockExpiresAt] = useState<string | undefined>();
+
+  const lockdownStatus: LockdownStatus = {
+    state: lockdownState,
+    capability: windowsCapability,
+    ...(unlockExpiresAt
+      ? {
+          parentUnlock: {
+            grantedAt: '2026-09-03T00:45:00Z',
+            expiresAt: unlockExpiresAt,
+          },
+        }
+      : {}),
+  };
 
   const api = useMemo<KidOSApi>(() => ({
     async planWorkspace(prompt) {
@@ -67,22 +85,29 @@ export function KidOSDesktopHarness({
       return lockdownState === 'restricted_safe_mode' ? 'restricted_safe_mode' : 'healthy';
     },
     async lockdownStatus() {
-      return { state: lockdownState, expiresAt: unlockExpiresAt };
+      return lockdownStatus;
     },
-    async configureWindowsLockdown() {
+    async configureWindowsLockdown(request) {
       setLockdownState('preparing');
-      return { state: 'preparing' };
+      return {
+        state: 'preparing',
+        capability: windowsCapability,
+        managedAccount: request.account,
+      };
     },
     async requestParentMaintenanceUnlock() {
-      const expiresAt = '2026-09-03T01:00:00Z';
+      const grant = {
+        grantedAt: '2026-09-03T00:45:00Z',
+        expiresAt: '2026-09-03T01:00:00Z',
+      };
       setLockdownState('parent_unlocked');
-      setUnlockExpiresAt(expiresAt);
-      return { state: 'parent_unlocked', expiresAt };
+      setUnlockExpiresAt(grant.expiresAt);
+      return grant;
     },
     async removeWindowsLockdown() {
       setLockdownState('unmanaged');
       setUnlockExpiresAt(undefined);
-      return { state: 'unmanaged' };
+      return { state: 'unmanaged', capability: windowsCapability };
     },
   }), [policy, lockdownState, unlockExpiresAt]);
 
@@ -100,7 +125,12 @@ export function KidOSDesktopHarness({
   if (!childMode) {
     return (
       <main>
-        <ParentDashboard authorized savePolicy={savePolicy} lockdownApi={api} initialLockdownStatus={{ state: lockdownState, expiresAt: unlockExpiresAt }} />
+        <ParentDashboard
+          authorized
+          savePolicy={savePolicy}
+          lockdownApi={api}
+          initialLockdownStatus={lockdownStatus}
+        />
         {lockdownState === 'parent_unlocked' ? (
           <button type="button" onClick={() => { setLockdownState('locked'); setUnlockExpiresAt(undefined); }}>
             Expire maintenance unlock
