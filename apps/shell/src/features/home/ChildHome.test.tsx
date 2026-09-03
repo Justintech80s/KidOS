@@ -5,6 +5,8 @@ import ChildHome from './ChildHome';
 
 afterEach(cleanup);
 
+const capability = { platform: 'windows', supported: true, mechanism: 'assigned_access' } as const;
+
 const api: KidOSApi = {
   async planWorkspace(prompt) {
     return {
@@ -21,6 +23,18 @@ const api: KidOSApi = {
   },
   async guardianStatus() {
     return 'healthy';
+  },
+  async lockdownStatus() {
+    return { state: 'unmanaged', capability };
+  },
+  async configureWindowsLockdown(request) {
+    return { state: 'preparing', capability, managedAccount: request.account };
+  },
+  async requestParentMaintenanceUnlock() {
+    return { grantedAt: '2026-09-03T00:45:00Z', expiresAt: '2026-09-03T01:00:00Z' };
+  },
+  async removeWindowsLockdown() {
+    return { state: 'unmanaged', capability };
   },
 };
 
