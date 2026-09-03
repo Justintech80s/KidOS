@@ -1,16 +1,23 @@
 import { useState } from 'react';
-import type { KidOSApi, LockdownStatusView } from '../../lib/kidos-api';
+import type { LockdownStatus, ManagedAccountRole, ParentUnlockGrant } from '@kidos/contracts';
+import type { KidOSApi } from '../../lib/kidos-api';
 
 type Props = {
   authorized: boolean;
   api: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown'>;
-  initialStatus?: LockdownStatusView;
+  initialStatus?: LockdownStatus;
 };
 
-export default function LockdownSettings({ authorized, api, initialStatus = { state: 'unmanaged' } }: Props) {
+const windowsCapability = { platform: 'windows', supported: true, mechanism: 'assigned_access' } as const;
+
+export default function LockdownSettings({
+  authorized,
+  api,
+  initialStatus = { state: 'unmanaged', capability: windowsCapability },
+}: Props) {
   const [accountName, setAccountName] = useState('');
-  const [accountRole, setAccountRole] = useState<'standard' | 'administrator' | 'unknown'>('standard');
-  const [status, setStatus] = useState(initialStatus);
+  const [accountRole, setAccountRole] = useState<ManagedAccountRole>('standard');
+  const [status, setStatus] = useState<LockdownStatus>(initialStatus);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,15 +29,19 @@ export default function LockdownSettings({ authorized, api, initialStatus = { st
       setError('Windows Lockdown Mode requires a validated standard child account.');
       return;
     }
-    const next = await api.configureWindowsLockdown({ accountName: accountName.trim(), accountRole });
+    const account = { id: accountName.trim(), displayName: accountName.trim(), role: accountRole } as const;
+    const next = await api.configureWindowsLockdown({
+      account,
+      approvedApps: [{ id: 'kidos', displayName: 'KidOS', executablePath: 'KidOS.exe' }],
+    });
     setStatus(next);
     setMessage("Lockdown is prepared. Windows applies Assigned Access at the child's next sign-in.");
   }
 
   async function unlock() {
-    const next = await api.requestParentMaintenanceUnlock(15);
-    setStatus(next);
-    setMessage(next.expiresAt ? `Parent maintenance access expires at ${next.expiresAt}.` : 'Parent maintenance access is temporary.');
+    const grant: ParentUnlockGrant = await api.requestParentMaintenanceUnlock(15);
+    setStatus((current) => ({ ...current, state: 'parent_unlocked', parentUnlock: grant }));
+    setMessage(`Parent maintenance access expires at ${grant.expiresAt}.`);
   }
 
   async function remove() {
@@ -52,7 +63,7 @@ export default function LockdownSettings({ authorized, api, initialStatus = { st
       <input id="lockdown-account" value={accountName} onChange={(event) => setAccountName(event.target.value)} />
 
       <label htmlFor="lockdown-role">Account role</label>
-      <select id="lockdown-role" value={accountRole} onChange={(event) => setAccountRole(event.target.value as typeof accountRole)}>
+      <select id="lockdown-role" value={accountRole} onChange={(event) => setAccountRole(event.target.value as ManagedAccountRole)}>
         <option value="standard">Standard child account</option>
         <option value="administrator">Administrator</option>
         <option value="unknown">Unknown</option>
