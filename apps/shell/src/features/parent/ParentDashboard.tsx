@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import type { DownloadMode, ParentPolicyConfig, SocialAccessMode } from '@kidos/contracts';
+import type { DownloadMode, LockdownStatus, ParentPolicyConfig, SocialAccessMode } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import LockdownSettings from './LockdownSettings';
 import SafetySummary, { type SafetySummaryData } from './SafetySummary';
@@ -10,6 +10,7 @@ type ParentDashboardProps = {
   safetySummary?: SafetySummaryData;
   clearSafetyEvents?: () => Promise<void>;
   lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown'>;
+  initialLockdownStatus?: LockdownStatus;
 };
 
 function splitDomains(value: string): string[] {
@@ -22,7 +23,7 @@ function timeToMinutes(value: string): number | undefined {
   return hours * 60 + minutes;
 }
 
-export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi }: ParentDashboardProps) {
+export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi, initialLockdownStatus }: ParentDashboardProps) {
   const [childAge, setChildAge] = useState(10);
   const [allowDomains, setAllowDomains] = useState('');
   const [blockDomains, setBlockDomains] = useState('');
@@ -60,7 +61,7 @@ export default function ParentDashboard({ authorized, savePolicy, safetySummary,
       <button type="submit">Save parent settings</button>
     </form>
     {status?<p role="status">{status}</p>:null}
-    {lockdownApi?<LockdownSettings authorized={authorized} api={lockdownApi}/>:null}
+    {lockdownApi?<LockdownSettings authorized={authorized} api={lockdownApi} initialStatus={initialLockdownStatus}/>:null}
     {safetySummary&&clearSafetyEvents?<SafetySummary authorized={authorized} summary={safetySummary} clearEvents={clearSafetyEvents}/>:null}
   </section>;
 }
