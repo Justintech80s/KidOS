@@ -17,6 +17,11 @@ pub use parent_policy::{
 pub use policy_store::PolicySnapshot;
 pub use safety_events::{SafetyEvent, SafetyEventError, SafetyEventStore, SafetyEventSummary};
 pub use service_state::{load_service_state, GuardianMode, GuardianState};
+pub use windows_lockdown::{
+    AccountRole, ApprovedApp, InMemoryWindowsLockdownAdapter, LockdownAdapterError,
+    LockdownProfile, LockdownServiceError, LockdownState, LockdownStatus, ParentUnlockGrant,
+    WindowsLockdownService,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuardianError {
