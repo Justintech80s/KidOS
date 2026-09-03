@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { extname, join, relative } from 'node:path';
 import test from 'node:test';
 
-const testDirectory = dirname(fileURLToPath(import.meta.url));
-const root = resolve(testDirectory, '../..');
+// CI invokes this test from the repository root. Using process.cwd() avoids
+// Windows file-URL drive-letter normalization producing paths such as D:\\D:\\...
+const root = process.cwd();
 const roots = ['apps/shell/src', 'apps/shell/src-tauri/src', 'crates/guardian-service/src', 'packages/contracts/src'];
 const extensions = new Set(['.ts', '.tsx', '.rs']);
 
