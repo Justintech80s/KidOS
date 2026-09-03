@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import LockdownSettings from './LockdownSettings';
 
@@ -11,6 +11,11 @@ const api = {
   removeWindowsLockdown: vi.fn(async () => ({ state: 'unmanaged' as const, capability })),
 };
 
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
 describe('LockdownSettings', () => {
   it('hides lockdown controls from unauthorized users', () => {
     render(<LockdownSettings authorized={false} api={api} />);
@@ -18,7 +23,6 @@ describe('LockdownSettings', () => {
   });
 
   it('rejects administrator accounts before configuration', async () => {
-    api.configureWindowsLockdown.mockClear();
     render(<LockdownSettings authorized api={api} />);
     fireEvent.change(screen.getByLabelText(/account name/i), { target: { value: 'Admin' } });
     fireEvent.change(screen.getByLabelText(/account role/i), { target: { value: 'administrator' } });
