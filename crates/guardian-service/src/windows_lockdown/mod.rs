@@ -13,3 +13,9 @@ pub use service::{
     LockdownServiceError, LockdownState, LockdownStatus, ParentUnlockGrant,
     WindowsLockdownService,
 };
+
+pub fn build_validated_assigned_access_config(
+    profile: &LockdownProfile,
+) -> Result<AssignedAccessConfig, LockdownConfigError> {
+    build_assigned_access_config(profile).map(AssignedAccessConfig::validated)
+}
