@@ -3,7 +3,7 @@ import type { WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 
-type ActiveTool = 'Notes' | 'Calculator' | 'KidOS AI' | 'Math Lab' | 'Science Explorer' | 'Reading Room' | 'Music' | null;
+type ActiveTool = 'Notes' | 'Calculator' | 'KidOS AI' | 'Math Lab' | 'Science Explorer' | 'Reading Room' | 'Music' | 'Puzzle Park' | 'Racing' | 'Strategy' | 'Explore' | 'Animals' | 'Space' | 'Files' | 'Camera' | 'Messages' | 'Screen Time' | 'Accessibility' | 'Guardian' | null;
 
 type Section =
   | 'Home'
@@ -108,6 +108,18 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [calcResult, setCalcResult] = useState('');
   const [aiQuestion, setAiQuestion] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask me a school-safe question and I’ll help you think it through.');
+  const [puzzleScore, setPuzzleScore] = useState(0);
+  const [raceStartedAt, setRaceStartedAt] = useState<number | null>(null);
+  const [raceResult, setRaceResult] = useState('Tap Start, then tap Finish as quickly as you can.');
+  const [strategyBoard, setStrategyBoard] = useState<Array<'X' | 'O' | null>>(Array(9).fill(null));
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [files, setFiles] = useState(['Homework Ideas.txt', 'Space Story.kidos', 'Reading Notes.txt']);
+  const [newFileName, setNewFileName] = useState('');
+  const [cameraStatus, setCameraStatus] = useState('Camera is off. KidOS asks before using it.');
+  const [messageText, setMessageText] = useState('');
+  const [messages, setMessages] = useState(['Parent: Have a great learning day!']);
+  const [largeText, setLargeText] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   const demoMode = useMemo(
     () =>
@@ -200,7 +212,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
 
 
   function openTool(title: string) {
-    const supported: ActiveTool[] = ['Notes', 'Calculator', 'KidOS AI', 'Math Lab', 'Science Explorer', 'Reading Room', 'Music'];
+    const supported: ActiveTool[] = ['Notes', 'Calculator', 'KidOS AI', 'Math Lab', 'Science Explorer', 'Reading Room', 'Music', 'Puzzle Park', 'Racing', 'Strategy', 'Explore', 'Animals', 'Space', 'Files', 'Camera', 'Messages', 'Screen Time', 'Accessibility', 'Guardian'];
     if (supported.includes(title as ActiveTool)) {
       setActiveTool(title as ActiveTool);
     }
@@ -241,6 +253,70 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
     } else {
       setAiAnswer('That is a good question. KidOS AI would answer using age-appropriate, parent-approved sources and explain it in simple steps.');
     }
+  }
+
+  function markPuzzle(correct: boolean) {
+    if (correct) setPuzzleScore((score) => score + 1);
+  }
+
+  function startRace() {
+    setRaceStartedAt(Date.now());
+    setRaceResult('Go! Tap Finish now.');
+  }
+
+  function finishRace() {
+    if (!raceStartedAt) {
+      setRaceResult('Tap Start first.');
+      return;
+    }
+    const elapsed = (Date.now() - raceStartedAt) / 1000;
+    setRaceResult(`Reaction time: ${elapsed.toFixed(2)} seconds`);
+    setRaceStartedAt(null);
+  }
+
+  function playStrategy(index: number) {
+    setStrategyBoard((board) => {
+      if (board[index]) return board;
+      const next = [...board];
+      next[index] = 'X';
+      const open = next.map((cell, i) => cell ? -1 : i).filter((i) => i >= 0);
+      if (open.length) next[open[0]] = 'O';
+      return next;
+    });
+  }
+
+  function resetStrategy() {
+    setStrategyBoard(Array(9).fill(null));
+  }
+
+  function addFile(event: FormEvent) {
+    event.preventDefault();
+    const name = newFileName.trim();
+    if (!name) return;
+    setFiles((current) => [...current, name]);
+    setNewFileName('');
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus('Camera access is not available in this environment.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraStatus('Camera permission confirmed. KidOS would now open the protected camera preview.');
+    } catch {
+      setCameraStatus('Camera permission was not granted.');
+    }
+  }
+
+  function sendMessage(event: FormEvent) {
+    event.preventDefault();
+    const value = messageText.trim();
+    if (!value) return;
+    setMessages((current) => [...current, `You → Parent: ${value}`]);
+    setMessageText('');
   }
 
   const toolPanel = activeTool ? (
@@ -286,6 +362,107 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
             />
             <button type="submit">Ask</button>
           </form>
+        </div>
+      ) : activeTool === 'Puzzle Park' ? (
+        <div className="learning-tool">
+          <div className="learning-score">🧩 Score: {puzzleScore}</div>
+          <h2>Which number completes the pattern?</h2>
+          <p>2, 4, 6, 8, ?</p>
+          <div className="answer-row">
+            <button type="button" onClick={() => markPuzzle(false)}>9</button>
+            <button type="button" onClick={() => markPuzzle(true)}>10</button>
+            <button type="button" onClick={() => markPuzzle(false)}>12</button>
+          </div>
+        </div>
+      ) : activeTool === 'Racing' ? (
+        <div className="learning-tool">
+          <div className="learning-score">🏎️ Reflex Racer</div>
+          <h2>Reaction challenge</h2>
+          <p>{raceResult}</p>
+          <div className="answer-row">
+            <button type="button" onClick={startRace}>Start</button>
+            <button type="button" onClick={finishRace}>Finish</button>
+          </div>
+        </div>
+      ) : activeTool === 'Strategy' ? (
+        <div className="learning-tool">
+          <div className="learning-score">♟️ Strategy Board</div>
+          <h2>Mini strategy game</h2>
+          <div className="strategy-board">
+            {strategyBoard.map((cell, index) => (
+              <button type="button" key={index} onClick={() => playStrategy(index)}>{cell ?? ''}</button>
+            ))}
+          </div>
+          <button type="button" className="primary-button" onClick={resetStrategy}>Reset board</button>
+        </div>
+      ) : activeTool === 'Explore' || activeTool === 'Animals' || activeTool === 'Space' ? (
+        <div className="learning-tool">
+          <div className="learning-score">▶ KidOS Watch • Approved</div>
+          <h2>{activeTool}</h2>
+          <div className="watch-grid">
+            {[
+              activeTool === 'Explore' ? 'Amazing Places on Earth' : activeTool === 'Animals' ? 'Wildlife Around the World' : 'Tour of the Solar System',
+              activeTool === 'Explore' ? 'How Maps Work' : activeTool === 'Animals' ? 'How Animals Adapt' : 'Why Stars Shine',
+              activeTool === 'Explore' ? 'Oceans and Mountains' : activeTool === 'Animals' ? 'Animal Habitats' : 'Moon Mission Basics',
+            ].map((title) => (
+              <button type="button" className="watch-card" key={title} onClick={() => setSelectedVideo(title)}>
+                <span>▶</span><strong>{title}</strong><small>KidOS approved</small>
+              </button>
+            ))}
+          </div>
+          {selectedVideo ? <div className="now-playing">Now playing preview: <strong>{selectedVideo}</strong><br/>Educational media would stream only after KidOS safety checks.</div> : null}
+        </div>
+      ) : activeTool === 'Files' ? (
+        <div className="learning-tool">
+          <div className="learning-score">📁 My Files</div>
+          <h2>Approved KidOS files</h2>
+          <div className="file-list">
+            {files.map((file) => <div className="file-row" key={file}><span>📄</span><strong>{file}</strong></div>)}
+          </div>
+          <form className="creation-bar" onSubmit={addFile}>
+            <input aria-label="New file name" value={newFileName} onChange={(event) => setNewFileName(event.target.value)} placeholder="New file name" />
+            <button type="submit">Add file</button>
+          </form>
+        </div>
+      ) : activeTool === 'Camera' ? (
+        <div className="learning-tool">
+          <div className="learning-score">📷 Protected Camera</div>
+          <h2>Camera access</h2>
+          <p>{cameraStatus}</p>
+          <button type="button" className="primary-button" onClick={startCamera}>Request camera access</button>
+        </div>
+      ) : activeTool === 'Messages' ? (
+        <div className="learning-tool">
+          <div className="learning-score">✉ Approved Messages</div>
+          <h2>Family messages</h2>
+          <div className="message-list">{messages.map((message, index) => <div className="message-bubble" key={index}>{message}</div>)}</div>
+          <form className="creation-bar" onSubmit={sendMessage}>
+            <input aria-label="Message parent" value={messageText} onChange={(event) => setMessageText(event.target.value)} placeholder="Message parent..." />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      ) : activeTool === 'Screen Time' ? (
+        <div className="learning-tool">
+          <div className="learning-score">⏱️ Wellbeing</div>
+          <h2>Today’s screen time</h2>
+          <div className="screen-time-ring">1h 24m</div>
+          <p>45 minutes of learning • 24 minutes creating • 15 minutes playing.</p>
+          <div className="fact-card">Next suggested break in 16 minutes.</div>
+        </div>
+      ) : activeTool === 'Accessibility' ? (
+        <div className="learning-tool">
+          <div className="learning-score">♿ Accessibility</div>
+          <h2>Make KidOS comfortable</h2>
+          <label className="toggle-row"><input type="checkbox" checked={largeText} onChange={(event) => setLargeText(event.target.checked)} /> Larger text</label>
+          <label className="toggle-row"><input type="checkbox" checked={reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} /> Reduce motion</label>
+          <div className="fact-card">These settings are saved for this KidOS session.</div>
+        </div>
+      ) : activeTool === 'Guardian' ? (
+        <div className="learning-tool">
+          <div className="learning-score">🔒 Guardian Protected</div>
+          <h2>Parent controls are locked</h2>
+          <p>Children can see that Guardian is active, but changing safety rules requires parent authorization.</p>
+          <div className="fact-card">🛡 Safe Mode: ON • Web policy active • Downloads protected • Parent PIN required for changes.</div>
         </div>
       ) : activeTool === 'Math Lab' ? (
         <div className="learning-tool">
@@ -516,7 +693,13 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               <p className="module-copy">
                 {sectionDescriptions[activeSection as Exclude<Section, 'Home' | 'Create' | 'Search'>]}
               </p>
-              {moduleCards[activeSection]?.length ? (
+              {activeSection === 'Messages' ? (
+                <div className="module-card-grid">
+                  <button type="button" className="module-action-card" onClick={() => openTool('Messages')}>
+                    <span>✉</span><strong>Family Messages</strong><small>Message approved family contacts inside KidOS.</small>
+                  </button>
+                </div>
+              ) : moduleCards[activeSection]?.length ? (
                 <div className="module-card-grid">
                   {moduleCards[activeSection]?.map((item) => (
                     <button type="button" className="module-action-card" key={item.title} onClick={() => openTool(item.title)}>
@@ -548,7 +731,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
           ].map(([icon, label]) => (
             <button type="button" key={label} title={label} onClick={() => {
               if (label === 'Browser') openSection('Search');
-              else if (label === 'Notes' || label === 'Calculator' || label === 'Music') openTool(label);
+              else if (label === 'Notes' || label === 'Calculator' || label === 'Music' || label === 'Files' || label === 'Camera') openTool(label);
             }}>
               <span>{icon}</span>
               <small>{label}</small>
