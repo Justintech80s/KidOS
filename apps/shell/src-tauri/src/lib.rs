@@ -4,7 +4,11 @@ use commands::{evaluate_download, evaluate_navigation, get_guardian_status, plan
 use guardian_service::{GuardianActor, GuardianPolicyStore, ParentPolicyConfig};
 use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 #[cfg(target_os = "windows")]
 use std::sync::Mutex;
 #[cfg(target_os = "windows")]
@@ -79,6 +83,91 @@ fn verify_parent_pin(_pin: String) -> Result<ParentVerificationDto, String> {
     Err("parent PIN verification is available in the Windows KidOS build".into())
 }
 
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParentPolicySaveDto {
+    saved: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn save_parent_policy(
+    pin: String,
+    policy: ParentPolicyConfig,
+    state: tauri::State<'_, LockdownHostState>,
+) -> Result<ParentPolicySaveDto, String> {
+    let mut authorization = state
+        .parent_authorization
+        .lock()
+        .map_err(|_| "parent authorization state is unavailable".to_string())?;
+    let mut guardian = state
+        .parent_policy
+        .lock()
+        .map_err(|_| "Guardian policy state is unavailable".to_string())?;
+
+    save_parent_policy_with_authorization(
+        &mut authorization,
+        &mut guardian,
+        &pin,
+        now_seconds(),
+        policy.clone(),
+    )?;
+    persist_parent_policy(&policy)?;
+    Ok(ParentPolicySaveDto { saved: true })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn save_parent_policy(_pin: String, _policy: ParentPolicyConfig) -> Result<ParentPolicySaveDto, String> {
+    Err("parent policy saving is available in the Windows KidOS build".into())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn evaluate_navigation_with_parent_policy(
+    url: String,
+    state: tauri::State<'_, LockdownHostState>,
+) -> Result<String, String> {
+    let guardian = state
+        .parent_policy
+        .lock()
+        .map_err(|_| "Guardian policy state is unavailable".to_string())?;
+    Ok(commands::evaluate_navigation_with_policy_impl(&url, guardian.current_parent_policy()).to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn evaluate_navigation_with_parent_policy(url: String) -> Result<String, String> {
+    Ok(commands::evaluate_navigation_impl(&url).to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn evaluate_download_with_parent_policy(
+    file_name: String,
+    mime_type: String,
+    state: tauri::State<'_, LockdownHostState>,
+) -> Result<String, String> {
+    let guardian = state
+        .parent_policy
+        .lock()
+        .map_err(|_| "Guardian policy state is unavailable".to_string())?;
+    Ok(commands::evaluate_download_with_policy_impl(
+        &file_name,
+        &mime_type,
+        false,
+        false,
+        guardian.current_parent_policy(),
+    ).to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn evaluate_download_with_parent_policy(file_name: String, mime_type: String) -> Result<String, String> {
+    Ok(commands::evaluate_download_impl(&file_name, &mime_type).to_string())
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LockdownCapabilityDto {
@@ -137,6 +226,38 @@ struct LockdownHostState {
     service: Mutex<WindowsLockdownService<WindowsAssignedAccessAdapter>>,
     managed_account: Mutex<Option<ManagedAccountDto>>,
     parent_authorization: Mutex<ParentAuthorization<WindowsSecretStore>>,
+    parent_policy: Mutex<GuardianPolicyStore>,
+}
+
+
+#[cfg(target_os = "windows")]
+fn parent_policy_path() -> Result<PathBuf, String> {
+    let base = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .ok_or_else(|| "KidOS could not resolve the Windows app-data folder.".to_string())?;
+    Ok(base.join("KidOS").join("parent-policy.json"))
+}
+
+#[cfg(target_os = "windows")]
+fn load_persisted_parent_policy() -> GuardianPolicyStore {
+    let mut store = GuardianPolicyStore::default();
+    let Ok(path) = parent_policy_path() else { return store; };
+    let Ok(contents) = fs::read_to_string(path) else { return store; };
+    let Ok(policy) = serde_json::from_str::<ParentPolicyConfig>(&contents) else { return store; };
+    let _ = store.replace_parent_policy(GuardianActor::ParentAuthorized, policy);
+    store
+}
+
+#[cfg(target_os = "windows")]
+fn persist_parent_policy(policy: &ParentPolicyConfig) -> Result<(), String> {
+    let path = parent_policy_path()?;
+    let parent = path.parent().ok_or_else(|| "KidOS policy path is invalid.".to_string())?;
+    fs::create_dir_all(parent).map_err(|_| "KidOS could not create its settings folder.".to_string())?;
+    let temp = path.with_extension("json.tmp");
+    let encoded = serde_json::to_vec_pretty(policy).map_err(|_| "KidOS could not encode parent policy.".to_string())?;
+    fs::write(&temp, encoded).map_err(|_| "KidOS could not save parent policy.".to_string())?;
+    fs::rename(&temp, &path).map_err(|_| "KidOS could not finalize parent policy.".to_string())?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -146,6 +267,7 @@ impl LockdownHostState {
             service: Mutex::new(WindowsLockdownService::new(WindowsAssignedAccessAdapter::default())),
             managed_account: Mutex::new(None),
             parent_authorization: Mutex::new(ParentAuthorization::new(WindowsSecretStore::new("KidOS"), PARENT_PIN_KEY)),
+            parent_policy: Mutex::new(load_persisted_parent_policy()),
         }
     }
 }
@@ -363,6 +485,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             configure_parent_pin,
             verify_parent_pin,
+            save_parent_policy,
+            evaluate_navigation_with_parent_policy,
+            evaluate_download_with_parent_policy,
             plan_workspace,
             evaluate_navigation,
             evaluate_download,
