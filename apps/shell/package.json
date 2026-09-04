@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "demo:record": "node ../../scripts/record-kidos-demo.mjs"
   },
   "dependencies": {
     "@kidos/contracts": "workspace:*",
@@ -26,6 +27,7 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.4",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "playwright": "^1.55.0"
   }
 }
