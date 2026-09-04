@@ -1,0 +1,38 @@
+name: KidOS Demo Video
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/shell/src/features/home/ChildHome.tsx'
+      - 'apps/shell/src/app.css'
+      - 'apps/shell/package.json'
+      - 'scripts/record-kidos-demo.mjs'
+      - '.github/workflows/kidos-demo-video.yml'
+
+jobs:
+  record-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --filter @kidos/shell exec playwright install --with-deps chromium
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Record KidOS visual walkthrough
+        run: pnpm --filter @kidos/shell demo:record
+      - name: Upload KidOS demo video
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Visual-Demo
+          path: artifacts/demo-video/KidOS-Demo.mp4
+          if-no-files-found: error
