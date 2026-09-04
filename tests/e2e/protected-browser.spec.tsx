@@ -8,6 +8,8 @@ describe('KidOS protected actions', () => {
   it('keeps blocked domains and high-risk downloads blocked', async () => {
     render(<KidOSDesktopHarness startInChildMode />);
 
+    fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+
     fireEvent.change(screen.getByLabelText('Protected web address'), {
       target: { value: 'https://blocked.example' },
     });
