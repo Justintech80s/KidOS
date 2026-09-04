@@ -1,0 +1,40 @@
+name: KidOS Windows Lockdown CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/**'
+      - 'crates/guardian-service/**'
+      - 'packages/contracts/**'
+      - 'tests/security/lockdown-source-safety.test.mjs'
+      - '.github/workflows/windows-lockdown-ci.yml'
+  push:
+    branches:
+      - feat/windows-lockdown-mode
+
+jobs:
+  windows-lockdown:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Run JavaScript tests
+        run: pnpm -r test --run
+      - name: Build JavaScript workspaces
+        run: pnpm -r build
+      - name: Run Rust tests
+        run: cargo test --workspace
+      - name: Check Rust workspace
+        run: cargo check --workspace
+      - name: Scan lockdown trust boundary
+        run: node --test tests/security/lockdown-source-safety.test.mjs
+      - name: Verify packaging metadata
+        run: node tests/packaging/tauri-config.test.mjs
+      - name: Build KidOS Windows installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
