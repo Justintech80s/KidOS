@@ -60,7 +60,7 @@ describe('KidOS protected child flows', () => {
 
   it('shows a parent approval gate instead of opening require-parent navigation', async () => {
     render(<ChildHome api={api} />);
-    fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Search$/ }));
 
     fireEvent.change(screen.getByLabelText('Protected web address'), {
       target: { value: 'https://unknown.example' },
@@ -73,7 +73,7 @@ describe('KidOS protected child flows', () => {
 
   it('shows the enforced Google SafeSearch URL before an allowed load', async () => {
     render(<ChildHome api={allowApi} />);
-    fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Search$/ }));
 
     fireEvent.change(screen.getByLabelText('Protected web address'), {
       target: { value: 'https://www.google.com/search?q=planets' },
