@@ -535,3 +535,37 @@ button { -webkit-tap-highlight-color: transparent; }
   .dock button { min-width: 58px; }
   .scenery { position: fixed; }
 }
+
+
+.demo-badge {
+  position: fixed;
+  z-index: 60;
+  right: 20px;
+  bottom: 96px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(10, 38, 67, .9);
+  color: white;
+  font-size: .76rem;
+  font-weight: 850;
+  letter-spacing: .02em;
+  box-shadow: 0 12px 32px rgba(8, 35, 58, .24);
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+.demo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6de08f;
+  box-shadow: 0 0 0 5px rgba(109, 224, 143, .14);
+}
+@media (max-width: 720px) {
+  .demo-badge {
+    right: 12px;
+    bottom: 158px;
+  }
+}
