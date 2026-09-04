@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import type { WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
@@ -66,6 +66,19 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [plan, setPlan] = useState<WorkspacePlan | null>(null);
   const [url, setUrl] = useState('');
   const [navigationState, setNavigationState] = useState<string | null>(null);
+  const [demoStep, setDemoStep] = useState(0);
+
+  const demoMode = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('demo') === '1',
+    [],
+  );
+
+  const demoSequence = useMemo<Section[]>(
+    () => ['Home', 'Learn', 'Play', 'Create', 'Search', 'KidOS AI', 'Settings', 'Home'],
+    [],
+  );
 
   const currentDate = useMemo(
     () =>
@@ -76,6 +89,41 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
       }).format(new Date()),
     [],
   );
+
+  useEffect(() => {
+    if (!demoMode) return;
+
+    const applyDemoStep = (step: number) => {
+      const section = demoSequence[step] ?? 'Home';
+      setActiveSection(section);
+      setPlan(null);
+
+      if (section === 'Create') {
+        setPrompt('Make a space story with friendly robots');
+      } else {
+        setPrompt('');
+      }
+
+      if (section === 'Search') {
+        setUrl('https://blocked.example');
+        setNavigationState('Site blocked by KidOS');
+      } else {
+        setUrl('');
+        setNavigationState(null);
+      }
+    };
+
+    applyDemoStep(0);
+    const interval = window.setInterval(() => {
+      setDemoStep((current) => {
+        const next = (current + 1) % demoSequence.length;
+        applyDemoStep(next);
+        return next;
+      });
+    }, 2800);
+
+    return () => window.clearInterval(interval);
+  }, [demoMode, demoSequence]);
 
   async function createWorkspace(event: FormEvent) {
     event.preventDefault();
@@ -111,6 +159,12 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   if (plan) {
     return (
       <main className="kidos-shell concept-shell">
+      {demoMode ? (
+        <div className="demo-badge" role="status">
+          <span className="demo-dot" />
+          KidOS Demo • {demoSequence[demoStep]}
+        </div>
+      ) : null}
         <section className="workspace-screen">
           <span className="workspace-badge">Safe workspace ready</span>
           <div className="workspace-icon">✨</div>
