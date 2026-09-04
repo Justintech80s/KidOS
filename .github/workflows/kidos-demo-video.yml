@@ -9,7 +9,7 @@ on:
       - 'apps/shell/src/features/home/ChildHome.tsx'
       - 'apps/shell/src/app.css'
       - 'apps/shell/package.json'
-      - 'scripts/record-kidos-demo.mjs'
+      - 'apps/shell/scripts/record-kidos-demo.mjs'
       - '.github/workflows/kidos-demo-video.yml'
 
 jobs:
