@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import type { WorkspacePlan } from '@kidos/contracts';
+import type { ParentPolicyConfig, WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 
@@ -114,6 +114,15 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [largeText, setLargeText] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [gameScore, setGameScore] = useState(0);
+  const [policyPin, setPolicyPin] = useState('');
+  const [policyChildAge, setPolicyChildAge] = useState(10);
+  const [policyAllowDomains, setPolicyAllowDomains] = useState('khanacademy.org');
+  const [policyBlockDomains, setPolicyBlockDomains] = useState('blocked.example');
+  const [policyTeenUnknownWeb, setPolicyTeenUnknownWeb] = useState(false);
+  const [policyDownloadMode, setPolicyDownloadMode] = useState<'block_high_risk' | 'require_parent_high_risk'>('require_parent_high_risk');
+  const [policySocialService, setPolicySocialService] = useState('youtube');
+  const [policySocialMode, setPolicySocialMode] = useState<'blocked' | 'allowed'>('blocked');
+  const [policySaveStatus, setPolicySaveStatus] = useState('');
   const [puzzleScore, setPuzzleScore] = useState(0);
   const [raceStartedAt, setRaceStartedAt] = useState<number | null>(null);
   const [raceResult, setRaceResult] = useState('Tap Start, then tap Finish as quickly as you can.');
@@ -284,6 +293,34 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
       setGuardianPin('');
     } catch {
       setGuardianStatusText('KidOS could not save the parent PIN.');
+    }
+  }
+
+  async function saveGuardianPolicy() {
+    if (!api.saveParentPolicy) {
+      setPolicySaveStatus('Policy saving is available in the installed Windows KidOS build.');
+      return;
+    }
+    const splitDomains = (value: string) =>
+      value.split(/\r?\n|,/).map((item) => item.trim().toLowerCase()).filter(Boolean);
+
+    const policy: ParentPolicyConfig = {
+      childAge: policyChildAge,
+      allowDomains: splitDomains(policyAllowDomains),
+      blockDomains: splitDomains(policyBlockDomains),
+      teenUnknownWebEnabled: policyChildAge >= 13 && policyTeenUnknownWeb,
+      socialAccess: policySocialService.trim()
+        ? [{ service: policySocialService.trim().toLowerCase(), mode: policySocialMode }]
+        : [],
+      downloadMode: policyDownloadMode,
+    };
+
+    try {
+      await api.saveParentPolicy(policyPin, policy);
+      setPolicySaveStatus('Safety policy saved and active.');
+      setPolicyPin('');
+    } catch {
+      setPolicySaveStatus('Safety policy was not saved. Check the parent PIN and policy values.');
     }
   }
 
@@ -615,7 +652,55 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               {guardianStatusText ? <div className="fact-card" role="status">{guardianStatusText}</div> : null}
             </>
           ) : (
-            <><div className="guardian-success">✓ Guardian approved</div><label className="setting-toggle"><input type="checkbox" defaultChecked /> Safe browsing enforced</label><label className="setting-toggle"><input type="checkbox" defaultChecked /> Media safety checks</label><label className="setting-toggle"><input type="checkbox" defaultChecked /> Block unapproved apps</label></>
+            <>
+              <div className="guardian-success">✓ Guardian approved</div>
+              <div className="guardian-policy-grid">
+                <label>
+                  <span>Child age</span>
+                  <input type="number" min={3} max={17} value={policyChildAge} onChange={(e) => {
+                    const age = Number(e.target.value);
+                    setPolicyChildAge(age);
+                    if (age < 13) setPolicyTeenUnknownWeb(false);
+                  }} />
+                </label>
+                <label>
+                  <span>Allowed websites</span>
+                  <textarea value={policyAllowDomains} onChange={(e) => setPolicyAllowDomains(e.target.value)} placeholder="khanacademy.org" />
+                </label>
+                <label>
+                  <span>Blocked websites</span>
+                  <textarea value={policyBlockDomains} onChange={(e) => setPolicyBlockDomains(e.target.value)} placeholder="unsafe.example" />
+                </label>
+                <label className="setting-toggle">
+                  <input type="checkbox" checked={policyTeenUnknownWeb} disabled={policyChildAge < 13} onChange={(e) => setPolicyTeenUnknownWeb(e.target.checked)} />
+                  Allow unknown websites for teen profile
+                </label>
+                <label>
+                  <span>Download protection</span>
+                  <select value={policyDownloadMode} onChange={(e) => setPolicyDownloadMode(e.target.value as 'block_high_risk' | 'require_parent_high_risk')}>
+                    <option value="require_parent_high_risk">Parent approval for high-risk downloads</option>
+                    <option value="block_high_risk">Always block high-risk downloads</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Social / media service</span>
+                  <input value={policySocialService} onChange={(e) => setPolicySocialService(e.target.value)} placeholder="youtube" />
+                </label>
+                <label>
+                  <span>Social / media access</span>
+                  <select value={policySocialMode} onChange={(e) => setPolicySocialMode(e.target.value as 'blocked' | 'allowed')}>
+                    <option value="blocked">Blocked</option>
+                    <option value="allowed">Allowed</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Confirm parent PIN to save</span>
+                  <input type="password" inputMode="numeric" minLength={4} maxLength={8} value={policyPin} onChange={(e) => setPolicyPin(e.target.value.replace(/\D/g, '').slice(0,8))} autoComplete="off" />
+                </label>
+              </div>
+              <button type="button" className="primary-button" onClick={saveGuardianPolicy}>Save & apply safety policy</button>
+              {policySaveStatus ? <div className="fact-card" role="status">{policySaveStatus}</div> : null}
+            </>
           )}
         </div>
       ) : (
