@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { LockdownStatus, ManagedAccount, ApprovedDesktopApp, ParentUnlockGrant, WorkspacePlan } from '@kidos/contracts';
+import type { LockdownStatus, ManagedAccount, ApprovedDesktopApp, ParentUnlockGrant, ParentPolicyConfig, WorkspacePlan } from '@kidos/contracts';
 
 export type PolicyDecision = 'allow' | 'block' | 'require_parent';
 export type GuardianStatus = 'healthy' | 'restricted_safe_mode';
@@ -21,6 +21,7 @@ export interface KidOSApi {
   guardianStatus(): Promise<GuardianStatus>;
   configureParentPin?(pin: string): Promise<void>;
   verifyParentPin?(pin: string): Promise<ParentVerification>;
+  saveParentPolicy?(pin: string, policy: ParentPolicyConfig): Promise<{ saved: boolean }>;
   lockdownStatus(): Promise<LockdownStatus>;
   configureWindowsLockdown(request: ConfigureWindowsLockdownRequest): Promise<LockdownStatus>;
   requestParentMaintenanceUnlock(durationMinutes: number): Promise<ParentUnlockGrant>;
@@ -29,11 +30,12 @@ export interface KidOSApi {
 
 export const tauriKidOSApi: KidOSApi = {
   planWorkspace(prompt) { return invoke<WorkspacePlan>('plan_workspace', { prompt }); },
-  evaluateNavigation(url) { return invoke<PolicyDecision>('evaluate_navigation', { url }); },
-  evaluateDownload(fileName, mimeType) { return invoke<PolicyDecision>('evaluate_download', { fileName, mimeType }); },
+  evaluateNavigation(url) { return invoke<PolicyDecision>('evaluate_navigation_with_parent_policy', { url }); },
+  evaluateDownload(fileName, mimeType) { return invoke<PolicyDecision>('evaluate_download_with_parent_policy', { fileName, mimeType }); },
   guardianStatus() { return invoke<GuardianStatus>('get_guardian_status'); },
   configureParentPin(pin) { return invoke<void>('configure_parent_pin', { pin }); },
   verifyParentPin(pin) { return invoke<ParentVerification>('verify_parent_pin', { pin }); },
+  saveParentPolicy(pin, policy) { return invoke<{ saved: boolean }>('save_parent_policy', { pin, policy }); },
   lockdownStatus() { return invoke<LockdownStatus>('lockdown_status'); },
   configureWindowsLockdown(request) { return invoke<LockdownStatus>('configure_windows_lockdown', { request }); },
   requestParentMaintenanceUnlock(durationMinutes) { return invoke<ParentUnlockGrant>('request_parent_maintenance_unlock', { durationMinutes }); },
