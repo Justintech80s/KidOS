@@ -23,7 +23,7 @@ const waitForReady = new Promise((resolveReady, rejectReady) => {
   const onData = (chunk) => {
     const text = chunk.toString();
     process.stdout.write(text);
-    if (text.includes('Local:') || text.includes('127.0.0.1:1420')) {
+    if (text.includes('127.0.0.1:') || text.includes('ready in')) {
       clearTimeout(timeout);
       ready = true;
       resolveReady();
