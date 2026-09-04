@@ -3,6 +3,8 @@ import type { WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 
+type ActiveTool = 'Notes' | 'Calculator' | 'KidOS AI' | 'Math Lab' | 'Science Explorer' | 'Reading Room' | 'Music' | null;
+
 type Section =
   | 'Home'
   | 'Learn'
@@ -100,6 +102,12 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [url, setUrl] = useState('');
   const [navigationState, setNavigationState] = useState<string | null>(null);
   const [demoStep, setDemoStep] = useState(0);
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const [noteText, setNoteText] = useState('');
+  const [calcInput, setCalcInput] = useState('');
+  const [calcResult, setCalcResult] = useState('');
+  const [aiQuestion, setAiQuestion] = useState('');
+  const [aiAnswer, setAiAnswer] = useState('Ask me a school-safe question and I’ll help you think it through.');
 
   const demoMode = useMemo(
     () =>
@@ -184,10 +192,134 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   }
 
   function openSection(section: Section) {
+    setActiveTool(null);
     setActiveSection(section);
     setPlan(null);
     setNavigationState(null);
   }
+
+
+  function openTool(title: string) {
+    const supported: ActiveTool[] = ['Notes', 'Calculator', 'KidOS AI', 'Math Lab', 'Science Explorer', 'Reading Room', 'Music'];
+    if (supported.includes(title as ActiveTool)) {
+      setActiveTool(title as ActiveTool);
+    }
+  }
+
+  function calculate() {
+    const match = calcInput.trim().match(/^(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)$/);
+    if (!match) {
+      setCalcResult('Try something like 12 + 8');
+      return;
+    }
+    const left = Number(match[1]);
+    const right = Number(match[3]);
+    const operator = match[2];
+    if (operator === '/' && right === 0) {
+      setCalcResult('Division by zero is not allowed.');
+      return;
+    }
+    const value =
+      operator === '+' ? left + right :
+      operator === '-' ? left - right :
+      operator === '*' ? left * right :
+      left / right;
+    setCalcResult(String(Number(value.toFixed(8))));
+  }
+
+  function answerKidOSAI(event: FormEvent) {
+    event.preventDefault();
+    const question = aiQuestion.trim();
+    if (!question) return;
+    const lower = question.toLowerCase();
+    if (lower.includes('planet') || lower.includes('space')) {
+      setAiAnswer('A planet is a large world that moves around a star. Earth is the planet we live on, and our solar system has eight planets.');
+    } else if (lower.includes('math') || /\d/.test(question)) {
+      setAiAnswer('I can help with that. Try breaking the problem into smaller steps, then check each step before moving on.');
+    } else if (lower.includes('story') || lower.includes('write')) {
+      setAiAnswer('Start with a character, give them a goal, add one challenge, and decide how they change by the end.');
+    } else {
+      setAiAnswer('That is a good question. KidOS AI would answer using age-appropriate, parent-approved sources and explain it in simple steps.');
+    }
+  }
+
+  const toolPanel = activeTool ? (
+    <section className="tool-window" aria-label={activeTool}>
+      <div className="tool-window-header">
+        <div>
+          <p className="eyebrow">KidOS App</p>
+          <h1>{activeTool}</h1>
+        </div>
+        <button type="button" className="tool-close" onClick={() => setActiveTool(null)}>Back</button>
+      </div>
+
+      {activeTool === 'Notes' ? (
+        <div className="notes-tool">
+          <textarea
+            aria-label="KidOS Notes"
+            value={noteText}
+            onChange={(event) => setNoteText(event.target.value)}
+            placeholder="Write your ideas, homework, or reminders here..."
+          />
+          <div className="tool-status">Saved in this KidOS session • {noteText.length} characters</div>
+        </div>
+      ) : activeTool === 'Calculator' ? (
+        <div className="calculator-tool">
+          <input
+            aria-label="Calculator expression"
+            value={calcInput}
+            onChange={(event) => setCalcInput(event.target.value)}
+            placeholder="12 + 8"
+          />
+          <button type="button" onClick={calculate}>Calculate</button>
+          <output className="calculator-result">{calcResult || '0'}</output>
+        </div>
+      ) : activeTool === 'KidOS AI' ? (
+        <div className="ai-tool">
+          <div className="ai-answer">🤖 {aiAnswer}</div>
+          <form onSubmit={answerKidOSAI}>
+            <input
+              aria-label="Ask KidOS AI"
+              value={aiQuestion}
+              onChange={(event) => setAiQuestion(event.target.value)}
+              placeholder="Why is the sky blue?"
+            />
+            <button type="submit">Ask</button>
+          </form>
+        </div>
+      ) : activeTool === 'Math Lab' ? (
+        <div className="learning-tool">
+          <div className="learning-score">⭐ Quick Challenge</div>
+          <h2>What is 7 × 8?</h2>
+          <div className="answer-row">
+            <button type="button">48</button><button type="button">54</button><button type="button">56</button>
+          </div>
+          <p>Choose an answer, then explain how you worked it out.</p>
+        </div>
+      ) : activeTool === 'Science Explorer' ? (
+        <div className="learning-tool">
+          <div className="learning-score">🔬 Science Explorer</div>
+          <h2>Why do plants need sunlight?</h2>
+          <p>Plants use light energy to make food in a process called photosynthesis. That energy helps them grow.</p>
+          <div className="fact-card">🌱 Try this: compare a plant near a sunny window with one kept in a darker place.</div>
+        </div>
+      ) : activeTool === 'Reading Room' ? (
+        <div className="learning-tool">
+          <div className="learning-score">📚 Reading Room</div>
+          <h2>The Curious Robot</h2>
+          <p>A small robot looked at the night sky and wondered why the stars seemed to sparkle. It decided to learn one new thing every day.</p>
+          <div className="fact-card">Question: What made the robot curious?</div>
+        </div>
+      ) : (
+        <div className="learning-tool">
+          <div className="learning-score">🎵 Music</div>
+          <h2>Approved Music Space</h2>
+          <p>KidOS can provide parent-approved music, simple rhythm activities, and creative audio tools here.</p>
+          <button type="button" className="primary-button">Start Rhythm Activity</button>
+        </div>
+      )}
+    </section>
+  ) : null;
 
   if (plan) {
     return (
@@ -283,7 +415,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
         </div>
 
         <div className="desktop-content">
-          {activeSection === 'Home' ? (
+          {toolPanel ? toolPanel : activeSection === 'Home' ? (
             <>
               <section className="welcome-row">
                 <div>
@@ -387,7 +519,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               {moduleCards[activeSection]?.length ? (
                 <div className="module-card-grid">
                   {moduleCards[activeSection]?.map((item) => (
-                    <button type="button" className="module-action-card" key={item.title}>
+                    <button type="button" className="module-action-card" key={item.title} onClick={() => openTool(item.title)}>
                       <span>{item.icon}</span>
                       <strong>{item.title}</strong>
                       <small>{item.copy}</small>
@@ -414,7 +546,10 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
             ['🎵', 'Music'],
             ['🗑️', 'Trash'],
           ].map(([icon, label]) => (
-            <button type="button" key={label} title={label}>
+            <button type="button" key={label} title={label} onClick={() => {
+              if (label === 'Browser') openSection('Search');
+              else if (label === 'Notes' || label === 'Calculator' || label === 'Music') openTool(label);
+            }}>
               <span>{icon}</span>
               <small>{label}</small>
             </button>
