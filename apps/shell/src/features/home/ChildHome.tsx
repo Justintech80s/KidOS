@@ -39,6 +39,39 @@ const cards: Array<{ section: Section; icon: string; title: string; copy: string
   { section: 'Settings', icon: '🛡️', title: 'Wellbeing', copy: 'Screen time & balance', tone: 'mint' },
 ];
 
+const moduleCards: Partial<Record<Section, Array<{ icon: string; title: string; copy: string }>>> = {
+  Learn: [
+    { icon: '➗', title: 'Math Lab', copy: 'Practice numbers, puzzles, and problem solving.' },
+    { icon: '🔬', title: 'Science Explorer', copy: 'Discover nature, space, and experiments.' },
+    { icon: '📚', title: 'Reading Room', copy: 'Build reading skills with approved stories.' },
+  ],
+  Play: [
+    { icon: '🧩', title: 'Puzzle Park', copy: 'Brain games selected for your profile.' },
+    { icon: '🏎️', title: 'Racing', copy: 'Kid-friendly racing and reflex games.' },
+    { icon: '♟️', title: 'Strategy', copy: 'Think ahead with safe strategy games.' },
+  ],
+  Watch: [
+    { icon: '🌎', title: 'Explore', copy: 'Curated educational videos about our world.' },
+    { icon: '🐾', title: 'Animals', copy: 'Nature and wildlife videos that pass KidOS checks.' },
+    { icon: '🚀', title: 'Space', copy: 'Approved science and astronomy videos.' },
+  ],
+  'My Apps': [
+    { icon: '📝', title: 'Notes', copy: 'Write ideas, homework, and reminders.' },
+    { icon: '🧮', title: 'Calculator', copy: 'A simple calculator for schoolwork.' },
+    { icon: '🎵', title: 'Music', copy: 'Open approved music tools and content.' },
+  ],
+  'KidOS AI': [
+    { icon: '💡', title: 'Ask a Question', copy: 'Get age-appropriate help with learning.' },
+    { icon: '✨', title: 'Create an Idea', copy: 'Brainstorm stories, projects, and drawings.' },
+    { icon: '🛡️', title: 'Protected Answers', copy: 'Responses stay inside KidOS safety rules.' },
+  ],
+  Settings: [
+    { icon: '⏱️', title: 'Screen Time', copy: 'See your daily balance and break schedule.' },
+    { icon: '♿', title: 'Accessibility', copy: 'Adjust text, motion, sound, and display.' },
+    { icon: '🔒', title: 'Guardian', copy: 'Parent-controlled safety settings stay protected.' },
+  ],
+};
+
 const sectionDescriptions: Record<Exclude<Section, 'Home' | 'Create' | 'Search'>, string> = {
   Learn: 'Your approved learning tools and school-friendly activities will live here.',
   Play: 'Only games approved for your KidOS profile will appear here.',
@@ -351,10 +384,22 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               <p className="module-copy">
                 {sectionDescriptions[activeSection as Exclude<Section, 'Home' | 'Create' | 'Search'>]}
               </p>
-              <div className="coming-soon-card">
-                <strong>Interface shell connected</strong>
-                <span>This screen is ready for the next functional module.</span>
-              </div>
+              {moduleCards[activeSection]?.length ? (
+                <div className="module-card-grid">
+                  {moduleCards[activeSection]?.map((item) => (
+                    <button type="button" className="module-action-card" key={item.title}>
+                      <span>{item.icon}</span>
+                      <strong>{item.title}</strong>
+                      <small>{item.copy}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="coming-soon-card">
+                  <strong>Protected module</strong>
+                  <span>This area is available only to approved KidOS contacts and services.</span>
+                </div>
+              )}
             </section>
           )}
         </div>
