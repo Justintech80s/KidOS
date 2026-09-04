@@ -569,3 +569,50 @@ button { -webkit-tap-highlight-color: transparent; }
     bottom: 158px;
   }
 }
+
+
+.module-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  width: min(900px, 100%);
+  margin-top: 28px;
+}
+.module-action-card {
+  min-height: 190px;
+  padding: 24px;
+  border: 1px solid rgba(28, 91, 133, .12);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 18px 40px rgba(24, 73, 105, .12);
+  color: #173b56;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease;
+  backdrop-filter: blur(14px);
+}
+.module-action-card:hover,
+.module-action-card:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 48px rgba(24, 73, 105, .18);
+}
+.module-action-card > span {
+  display: block;
+  margin-bottom: 18px;
+  font-size: 2.3rem;
+}
+.module-action-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.08rem;
+}
+.module-action-card small {
+  display: block;
+  color: #557086;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+@media (max-width: 920px) {
+  .module-card-grid { grid-template-columns: 1fr; }
+  .module-action-card { min-height: 0; }
+}
