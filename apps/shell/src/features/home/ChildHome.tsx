@@ -180,6 +180,12 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
 
   return (
     <main className="kidos-shell concept-shell">
+      {demoMode ? (
+        <div className="demo-badge" role="status">
+          <span className="demo-dot" />
+          KidOS Demo • {demoSequence[demoStep]}
+        </div>
+      ) : null}
       <aside className="sidebar" aria-label="KidOS navigation">
         <div className="brand">
           <div className="brand-mark">🐻</div>
