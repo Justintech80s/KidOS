@@ -44,6 +44,41 @@ fn configure_parent_pin(pin: String) -> Result<(), String> {
 #[tauri::command]
 fn configure_parent_pin(_pin: String) -> Result<(), String> { Err("parent PIN storage is available in the Windows KidOS build".into()) }
 
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParentVerificationDto {
+    authorized: bool,
+    locked: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn verify_parent_pin(
+    pin: String,
+    state: tauri::State<'_, LockdownHostState>,
+) -> Result<ParentVerificationDto, String> {
+    let mut authorization = state
+        .parent_authorization
+        .lock()
+        .map_err(|_| "parent authorization state is unavailable".to_string())?;
+
+    match authorization
+        .verify(&pin, now_seconds())
+        .map_err(|_| "unable to verify parent PIN".to_string())?
+    {
+        ParentAuthorizationResult::Authorized => Ok(ParentVerificationDto { authorized: true, locked: false }),
+        ParentAuthorizationResult::Denied => Ok(ParentVerificationDto { authorized: false, locked: false }),
+        ParentAuthorizationResult::Locked => Ok(ParentVerificationDto { authorized: false, locked: true }),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn verify_parent_pin(_pin: String) -> Result<ParentVerificationDto, String> {
+    Err("parent PIN verification is available in the Windows KidOS build".into())
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LockdownCapabilityDto {
@@ -101,6 +136,7 @@ struct LockdownStatusDto {
 struct LockdownHostState {
     service: Mutex<WindowsLockdownService<WindowsAssignedAccessAdapter>>,
     managed_account: Mutex<Option<ManagedAccountDto>>,
+    parent_authorization: Mutex<ParentAuthorization<WindowsSecretStore>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -109,6 +145,7 @@ impl LockdownHostState {
         Self {
             service: Mutex::new(WindowsLockdownService::new(WindowsAssignedAccessAdapter::default())),
             managed_account: Mutex::new(None),
+            parent_authorization: Mutex::new(ParentAuthorization::new(WindowsSecretStore::new("KidOS"), PARENT_PIN_KEY)),
         }
     }
 }
@@ -325,6 +362,7 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             configure_parent_pin,
+            verify_parent_pin,
             plan_workspace,
             evaluate_navigation,
             evaluate_download,
