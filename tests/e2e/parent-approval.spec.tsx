@@ -8,7 +8,7 @@ describe('KidOS one-time parent approval', () => {
   it('allows one parent-gated navigation only after parent approval', async () => {
     render(<KidOSDesktopHarness startInChildMode />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Search$/ }));
 
     fireEvent.change(screen.getByLabelText('Protected web address'), {
       target: { value: 'https://unknown.example/learn' },
