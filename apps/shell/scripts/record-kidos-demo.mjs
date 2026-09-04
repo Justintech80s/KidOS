@@ -58,6 +58,17 @@ if (recordedPath !== webmPath) {
 }
 
 server.kill('SIGTERM');
+await new Promise((resolveServer) => {
+  if (server.exitCode !== null || server.signalCode !== null) {
+    resolveServer();
+    return;
+  }
+  const timer = setTimeout(() => resolveServer(), 3000);
+  server.once('exit', () => {
+    clearTimeout(timer);
+    resolveServer();
+  });
+});
 
 const ffmpeg = spawn(
   'ffmpeg',
@@ -73,3 +84,4 @@ await new Promise((resolveFfmpeg, rejectFfmpeg) => {
 });
 
 console.log(`KidOS demo video created: ${mp4Path}`);
+process.exit(0);
