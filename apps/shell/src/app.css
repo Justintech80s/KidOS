@@ -843,3 +843,30 @@ button { -webkit-tap-highlight-color: transparent; }
 .large-text {font-size:118%;}
 .reduced-motion * {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
 @media(max-width:720px){.file-grid{grid-template-columns:1fr}.message-list div{grid-template-columns:34px 1fr}.message-list div span{grid-column:2}}
+
+
+.guardian-pin-input {
+  width: min(360px, 100%);
+  padding: 15px 17px;
+  border-radius: 15px;
+  border: 1px solid #d3e3ec;
+  background: #fbfdff;
+  color: #17384f;
+  outline: none;
+  letter-spacing: .18em;
+  font-weight: 800;
+}
+.guardian-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.secondary-button {
+  border: 1px solid #cfe0ea;
+  border-radius: 14px;
+  padding: 12px 18px;
+  background: #f4f9fc;
+  color: #245c7a;
+  font-weight: 850;
+  cursor: pointer;
+}
