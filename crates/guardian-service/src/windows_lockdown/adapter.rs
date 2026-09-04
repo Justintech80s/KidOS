@@ -77,7 +77,7 @@ fn encode_for_mdm_bridge(value: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
-        .replace(''', "&#39;")
+        .replace('\'', "&#39;")
 }
 
 #[cfg(target_os = "windows")]
