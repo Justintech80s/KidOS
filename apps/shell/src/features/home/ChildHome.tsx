@@ -109,6 +109,8 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [aiQuestion, setAiQuestion] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask me a school-safe question and I’ll help you think it through.');
   const [guardianUnlocked, setGuardianUnlocked] = useState(false);
+  const [guardianPin, setGuardianPin] = useState('');
+  const [guardianStatusText, setGuardianStatusText] = useState('');
   const [largeText, setLargeText] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [gameScore, setGameScore] = useState(0);
@@ -241,6 +243,48 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
       operator === '*' ? left * right :
       left / right;
     setCalcResult(String(Number(value.toFixed(8))));
+  }
+
+  async function verifyGuardianPin() {
+    if (!api.verifyParentPin) {
+      setGuardianStatusText('Secure parent PIN verification is available in the installed Windows KidOS build.');
+      return;
+    }
+    const pin = guardianPin.trim();
+    if (!pin) return;
+    try {
+      const result = await api.verifyParentPin(pin);
+      if (result.authorized) {
+        setGuardianUnlocked(true);
+        setGuardianStatusText('Guardian approved.');
+        setGuardianPin('');
+      } else if (result.locked) {
+        setGuardianStatusText('Too many attempts. Parent PIN entry is temporarily locked.');
+      } else {
+        setGuardianStatusText('Parent PIN was not accepted.');
+      }
+    } catch {
+      setGuardianStatusText('Parent PIN verification is unavailable.');
+    }
+  }
+
+  async function createGuardianPin() {
+    if (!api.configureParentPin) {
+      setGuardianStatusText('Secure PIN setup is available in the installed Windows KidOS build.');
+      return;
+    }
+    const pin = guardianPin.trim();
+    if (!/^\d{4,8}$/.test(pin)) {
+      setGuardianStatusText('Use a 4–8 digit parent PIN.');
+      return;
+    }
+    try {
+      await api.configureParentPin(pin);
+      setGuardianStatusText('Parent PIN securely created. Enter it again to unlock Guardian controls.');
+      setGuardianPin('');
+    } catch {
+      setGuardianStatusText('KidOS could not save the parent PIN.');
+    }
   }
 
   function answerKidOSAI(event: FormEvent) {
@@ -550,7 +594,26 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
           <div className="learning-score">🔒 Parent Area</div>
           <h2>Guardian Controls</h2>
           {!guardianUnlocked ? (
-            <><p>Child safety rules cannot be changed without guardian approval.</p><button type="button" className="primary-button" onClick={() => setGuardianUnlocked(true)}>Simulate guardian approval</button></>
+            <>
+              <p>Child safety rules cannot be changed without a verified parent PIN.</p>
+              <input
+                className="guardian-pin-input"
+                aria-label="Parent PIN"
+                type="password"
+                inputMode="numeric"
+                minLength={4}
+                maxLength={8}
+                value={guardianPin}
+                onChange={(event) => setGuardianPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="Parent PIN"
+                autoComplete="off"
+              />
+              <div className="guardian-button-row">
+                <button type="button" className="primary-button" onClick={verifyGuardianPin}>Unlock controls</button>
+                <button type="button" className="secondary-button" onClick={createGuardianPin}>Create / change PIN</button>
+              </div>
+              {guardianStatusText ? <div className="fact-card" role="status">{guardianStatusText}</div> : null}
+            </>
           ) : (
             <><div className="guardian-success">✓ Guardian approved</div><label className="setting-toggle"><input type="checkbox" defaultChecked /> Safe browsing enforced</label><label className="setting-toggle"><input type="checkbox" defaultChecked /> Media safety checks</label><label className="setting-toggle"><input type="checkbox" defaultChecked /> Block unapproved apps</label></>
           )}
