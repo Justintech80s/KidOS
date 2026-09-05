@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import type { ParentPolicyConfig, WorkspacePlan } from '@kidos/contracts';
+import type { ApprovedDesktopApp, LockdownStatus, ParentPolicyConfig, WorkspacePlan } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 
@@ -123,6 +123,12 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [policySocialService, setPolicySocialService] = useState('youtube');
   const [policySocialMode, setPolicySocialMode] = useState<'blocked' | 'allowed'>('blocked');
   const [policySaveStatus, setPolicySaveStatus] = useState('');
+  const [lockdownAccount, setLockdownAccount] = useState('');
+  const [approvedAppName, setApprovedAppName] = useState('');
+  const [approvedAppPath, setApprovedAppPath] = useState('');
+  const [approvedApps, setApprovedApps] = useState<ApprovedDesktopApp[]>([]);
+  const [lockdownUiStatus, setLockdownUiStatus] = useState<LockdownStatus | null>(null);
+  const [lockdownMessage, setLockdownMessage] = useState('');
   const [puzzleScore, setPuzzleScore] = useState(0);
   const [raceStartedAt, setRaceStartedAt] = useState<number | null>(null);
   const [raceResult, setRaceResult] = useState('Tap Start, then tap Finish as quickly as you can.');
@@ -293,6 +299,79 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
       setGuardianPin('');
     } catch {
       setGuardianStatusText('KidOS could not save the parent PIN.');
+    }
+  }
+
+  function addApprovedApp() {
+    const name = approvedAppName.trim();
+    const path = approvedAppPath.trim();
+    if (!name || !path) {
+      setLockdownMessage('Enter both an app name and executable path.');
+      return;
+    }
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'approved-app';
+    setApprovedApps((current) => {
+      const withoutDuplicate = current.filter((app) => app.id !== id);
+      return [...withoutDuplicate, { id, displayName: name, executablePath: path }];
+    });
+    setApprovedAppName('');
+    setApprovedAppPath('');
+    setLockdownMessage('Approved app added to the pending KidOS lockdown profile.');
+  }
+
+  async function refreshLockdownStatus() {
+    try {
+      const status = await api.lockdownStatus();
+      setLockdownUiStatus(status);
+      setLockdownMessage(status.reason ?? `Windows lockdown state: ${status.state.replaceAll('_', ' ')}.`);
+    } catch {
+      setLockdownMessage('KidOS could not read Windows lockdown status.');
+    }
+  }
+
+  async function applyWindowsLockdown() {
+    const accountName = lockdownAccount.trim();
+    if (!accountName) {
+      setLockdownMessage('Enter the Windows standard child account name.');
+      return;
+    }
+    try {
+      const status = await api.configureWindowsLockdown({
+        account: { id: accountName, displayName: accountName, role: 'standard' },
+        approvedApps: [
+          { id: 'kidos', displayName: 'KidOS', executablePath: 'KidOS.exe' },
+          ...approvedApps,
+        ],
+      });
+      setLockdownUiStatus(status);
+      setLockdownMessage(
+        status.reason ??
+          "KidOS sent the Assigned Access profile to Windows. The child account may need to sign out and back in before Windows applies it.",
+      );
+    } catch {
+      setLockdownMessage('Windows lockdown could not be applied. KidOS Guardian may need elevated service authority.');
+    }
+  }
+
+  async function parentMaintenanceUnlock() {
+    try {
+      const grant = await api.requestParentMaintenanceUnlock(15);
+      setLockdownUiStatus((current) =>
+        current ? { ...current, state: 'parent_unlocked', parentUnlock: grant } : current,
+      );
+      setLockdownMessage(`Parent maintenance access expires at ${grant.expiresAt}.`);
+    } catch {
+      setLockdownMessage('Maintenance unlock was not granted.');
+    }
+  }
+
+  async function removeWindowsLockdownFromGuardian() {
+    try {
+      const status = await api.removeWindowsLockdown();
+      setLockdownUiStatus(status);
+      setLockdownMessage('Authorized parent requested Windows lockdown removal.');
+    } catch {
+      setLockdownMessage('Windows lockdown removal was not completed.');
     }
   }
 
@@ -700,6 +779,59 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               </div>
               <button type="button" className="primary-button" onClick={saveGuardianPolicy}>Save & apply safety policy</button>
               {policySaveStatus ? <div className="fact-card" role="status">{policySaveStatus}</div> : null}
+
+              <div className="guardian-divider" />
+              <div className="learning-score">🪟 Windows Lockdown</div>
+              <h2>Approved Apps & Child Account</h2>
+              <p>Use a standard Windows child account. KidOS itself is always included; add only desktop apps you want the child to access.</p>
+
+              <div className="guardian-policy-grid">
+                <label>
+                  <span>Windows child account</span>
+                  <input value={lockdownAccount} onChange={(e) => setLockdownAccount(e.target.value)} placeholder="Alex" />
+                </label>
+                <label>
+                  <span>Approved app name</span>
+                  <input value={approvedAppName} onChange={(e) => setApprovedAppName(e.target.value)} placeholder="Calculator" />
+                </label>
+                <label className="guardian-wide-field">
+                  <span>Approved app executable path</span>
+                  <input value={approvedAppPath} onChange={(e) => setApprovedAppPath(e.target.value)} placeholder="C:\\Windows\\System32\\calc.exe" />
+                </label>
+              </div>
+
+              <div className="guardian-button-row">
+                <button type="button" className="secondary-button" onClick={addApprovedApp}>Add approved app</button>
+                <button type="button" className="secondary-button" onClick={refreshLockdownStatus}>Check Windows status</button>
+              </div>
+
+              <div className="approved-app-list">
+                <div className="approved-app-row">
+                  <span>🛡️</span><strong>KidOS</strong><small>Always approved</small>
+                </div>
+                {approvedApps.map((app) => (
+                  <div className="approved-app-row" key={app.id}>
+                    <span>✓</span>
+                    <strong>{app.displayName}</strong>
+                    <small>{app.executablePath}</small>
+                    <button type="button" onClick={() => setApprovedApps((current) => current.filter((item) => item.id !== app.id))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="guardian-button-row">
+                <button type="button" className="primary-button" onClick={applyWindowsLockdown}>Apply Windows lockdown</button>
+                <button type="button" className="secondary-button" onClick={parentMaintenanceUnlock}>15-minute parent unlock</button>
+                <button type="button" className="secondary-button" onClick={removeWindowsLockdownFromGuardian}>Remove lockdown</button>
+              </div>
+
+              {lockdownUiStatus ? (
+                <div className="fact-card">
+                  Windows state: <strong>{lockdownUiStatus.state.replaceAll('_', ' ')}</strong>
+                  {lockdownUiStatus.managedAccount ? <> • Account: {lockdownUiStatus.managedAccount.displayName}</> : null}
+                </div>
+              ) : null}
+              {lockdownMessage ? <div className="fact-card" role="status">{lockdownMessage}</div> : null}
             </>
           )}
         </div>
