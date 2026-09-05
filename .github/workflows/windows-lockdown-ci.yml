@@ -10,6 +10,7 @@ on:
       - '.github/workflows/windows-lockdown-ci.yml'
   push:
     branches:
+      - main
       - feat/windows-lockdown-mode
 
 jobs:
