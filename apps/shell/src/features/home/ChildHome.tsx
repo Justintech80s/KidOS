@@ -129,6 +129,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [approvedApps, setApprovedApps] = useState<ApprovedDesktopApp[]>([]);
   const [lockdownUiStatus, setLockdownUiStatus] = useState<LockdownStatus | null>(null);
   const [lockdownMessage, setLockdownMessage] = useState('');
+  const [lockdownParentPin, setLockdownParentPin] = useState('');
   const [puzzleScore, setPuzzleScore] = useState(0);
   const [raceStartedAt, setRaceStartedAt] = useState<number | null>(null);
   const [raceResult, setRaceResult] = useState('Tap Start, then tap Finish as quickly as you can.');
@@ -353,7 +354,13 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
 
   async function parentMaintenanceUnlock() {
     try {
-      const grant = await api.requestParentMaintenanceUnlock(15);
+      const pin = lockdownParentPin.trim();
+      if (!pin) {
+        setLockdownMessage('Enter the parent PIN for maintenance unlock.');
+        return;
+      }
+      const grant = await api.requestParentMaintenanceUnlock(pin, 15);
+      setLockdownParentPin('');
       setLockdownUiStatus((current) =>
         current ? { ...current, state: 'parent_unlocked', parentUnlock: grant } : current,
       );
@@ -365,7 +372,13 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
 
   async function removeWindowsLockdownFromGuardian() {
     try {
-      const status = await api.removeWindowsLockdown();
+      const pin = lockdownParentPin.trim();
+      if (!pin) {
+        setLockdownMessage('Enter the parent PIN to remove Windows lockdown.');
+        return;
+      }
+      const status = await api.removeWindowsLockdown(pin);
+      setLockdownParentPin('');
       setLockdownUiStatus(status);
       setLockdownMessage('Authorized parent requested Windows lockdown removal.');
     } catch {
@@ -817,6 +830,18 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
                 ))}
               </div>
 
+              <label className="guardian-sensitive-pin">
+                <span>Parent PIN for unlock/removal</span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  minLength={4}
+                  maxLength={8}
+                  value={lockdownParentPin}
+                  onChange={(e) => setLockdownParentPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  autoComplete="off"
+                />
+              </label>
               <div className="guardian-button-row">
                 <button type="button" className="primary-button" onClick={applyWindowsLockdown}>Apply Windows lockdown</button>
                 <button type="button" className="secondary-button" onClick={parentMaintenanceUnlock}>15-minute parent unlock</button>
