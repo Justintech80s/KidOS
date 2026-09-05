@@ -1,0 +1,10 @@
+[package]
+name = "kidos-guardian-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+guardian-service = { path = "../guardian-service" }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
