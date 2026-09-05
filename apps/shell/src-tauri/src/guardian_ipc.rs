@@ -159,3 +159,23 @@ pub fn remove_lockdown(pin: String) -> Result<(String, Option<String>), String> 
         _ => Err("Guardian returned an unexpected lockdown removal response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+pub fn evaluate_download(
+    url: String,
+    file_name: String,
+    mime_type: String,
+    archive_contains_high_risk: bool,
+) -> Result<String, String> {
+    match send(PrivilegedRequest::EvaluateDownload {
+        url,
+        file_name,
+        mime_type,
+        archive_contains_high_risk,
+    })? {
+        PrivilegedResponse::PolicyDecision { decision } => Ok(decision),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected download-policy response.".into()),
+    }
+}
