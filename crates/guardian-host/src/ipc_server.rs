@@ -21,7 +21,10 @@ use std::{
 #[cfg(target_os = "windows")]
 use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, WindowsSecretStore};
 #[cfg(target_os = "windows")]
-use policy_core::{evaluate_download as evaluate_download_policy, DownloadContext, DownloadMode, PolicyDecision};
+use policy_core::{
+    evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
+    DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, PolicyDecision,
+};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
@@ -395,6 +398,51 @@ fn handle_request(
                 archive_contains_high_risk,
                 parent_policy.current_parent_policy(),
             );
+            PrivilegedResponse::PolicyDecision { decision: decision.into() }
+        }
+        PrivilegedRequest::EvaluateMedia {
+            file_name,
+            category,
+            risk,
+            high_confidence,
+            classifier_available,
+        } => {
+            if file_name.trim().is_empty() || file_name.len() > 260 {
+                return error_response("invalid_media_name", "KidOS rejected an invalid media filename.");
+            }
+
+            let category = match category.as_str() {
+                "safe" => MediaCategory::Safe,
+                "adult_nudity" => MediaCategory::AdultNudity,
+                "sexualized_content" => MediaCategory::SexualizedContent,
+                "graphic_violence" => MediaCategory::GraphicViolence,
+                "self_harm" => MediaCategory::SelfHarm,
+                "drugs" => MediaCategory::Drugs,
+                "extremist_content" => MediaCategory::ExtremistContent,
+                "scam" => MediaCategory::Scam,
+                _ => MediaCategory::Uncertain,
+            };
+            let risk = match risk.as_str() {
+                "low" => MediaRisk::Low,
+                "medium" => MediaRisk::Medium,
+                "high" => MediaRisk::High,
+                _ => MediaRisk::High,
+            };
+            let policy = parent_policy.current_parent_policy();
+            let context = MediaContext {
+                age: policy.child_age,
+                category,
+                risk,
+                high_confidence,
+                parent_blocked: false,
+                classifier_available,
+                teen_uncertain_enabled: false,
+            };
+            let decision = match evaluate_media_policy(&context) {
+                PolicyDecision::Allow => "allow",
+                PolicyDecision::Block => "block",
+                PolicyDecision::RequireParent => "require_parent",
+            };
             PrivilegedResponse::PolicyDecision { decision: decision.into() }
         }
         PrivilegedRequest::ApplyLockdown { profile } => {
