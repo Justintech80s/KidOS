@@ -914,6 +914,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
               type="button"
               key={item.label}
               className={activeSection === item.label ? 'nav-item active' : 'nav-item'}
+              aria-label={item.label}
               onClick={() => item.label === 'Messages' ? openTool('Messages') : openSection(item.label)}
             >
               <span>{item.icon}</span>
