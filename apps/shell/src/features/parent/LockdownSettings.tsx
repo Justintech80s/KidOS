@@ -20,6 +20,7 @@ export default function LockdownSettings({
   const [status, setStatus] = useState<LockdownStatus>(initialStatus);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [parentPin, setParentPin] = useState('');
 
   if (!authorized) return null;
 
@@ -39,13 +40,23 @@ export default function LockdownSettings({
   }
 
   async function unlock() {
-    const grant: ParentUnlockGrant = await api.requestParentMaintenanceUnlock(15);
+    if (!parentPin.trim()) {
+      setError('Enter the parent PIN to unlock maintenance access.');
+      return;
+    }
+    const grant: ParentUnlockGrant = await api.requestParentMaintenanceUnlock(parentPin.trim(), 15);
+    setParentPin('');
     setStatus((current) => ({ ...current, state: 'parent_unlocked', parentUnlock: grant }));
     setMessage(`Parent maintenance access expires at ${grant.expiresAt}.`);
   }
 
   async function remove() {
-    const next = await api.removeWindowsLockdown();
+    if (!parentPin.trim()) {
+      setError('Enter the parent PIN to remove Windows lockdown.');
+      return;
+    }
+    const next = await api.removeWindowsLockdown(parentPin.trim());
+    setParentPin('');
     setStatus(next);
     setMessage('Windows Lockdown removal was requested by the authorized parent.');
   }
@@ -68,6 +79,9 @@ export default function LockdownSettings({
         <option value="administrator">Administrator</option>
         <option value="unknown">Unknown</option>
       </select>
+
+      <label htmlFor="lockdown-parent-pin">Parent PIN for sensitive changes</label>
+      <input id="lockdown-parent-pin" type="password" inputMode="numeric" minLength={4} maxLength={8} value={parentPin} onChange={(event) => setParentPin(event.target.value.replace(/\D/g, '').slice(0, 8))} autoComplete="off" />
 
       <button type="button" onClick={configure}>Configure lockdown</button>
       {status.state === 'locked' || status.state === 'parent_unlocked' ? (
