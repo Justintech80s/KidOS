@@ -33,6 +33,7 @@ describe('KidOS Windows Lockdown vertical slice', () => {
 
   it('expires a temporary parent maintenance unlock', async () => {
     render(<KidOSDesktopHarness initialLockdownState="locked" />);
+    fireEvent.change(screen.getByLabelText('Parent PIN for sensitive changes'), { target: { value: '2468' } });
     fireEvent.click(screen.getByRole('button', { name: /maintenance unlock/i }));
     expect(await screen.findByRole('status')).toHaveTextContent(/expires/i);
     fireEvent.click(screen.getByRole('button', { name: 'Expire maintenance unlock' }));
