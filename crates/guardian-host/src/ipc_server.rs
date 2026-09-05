@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 use guardian_service::{
+    GuardianActor, GuardianPolicyStore, ParentPolicyConfig,
     privileged_ipc::{
         decode_privileged_request, IpcAccountRole, PrivilegedNonceTracker, PrivilegedRequest,
         PrivilegedResponse, GUARDIAN_PIPE_NAME, MAX_IPC_MESSAGE_BYTES,
@@ -10,7 +11,15 @@ use guardian_service::{
     },
 };
 #[cfg(target_os = "windows")]
-use std::{mem::size_of, ptr::null_mut};
+use std::{
+    fs,
+    mem::size_of,
+    path::PathBuf,
+    ptr::null_mut,
+    time::{SystemTime, UNIX_EPOCH},
+};
+#[cfg(target_os = "windows")]
+use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, WindowsSecretStore};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
@@ -28,6 +37,86 @@ use windows_sys::Win32::{
 #[cfg(target_os = "windows")]
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+const PARENT_PIN_KEY: &str = "parent-pin";
+
+#[cfg(target_os = "windows")]
+fn now_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[cfg(target_os = "windows")]
+fn guardian_data_dir() -> Result<PathBuf, String> {
+    let base = std::env::var_os("PROGRAMDATA")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Guardian could not resolve ProgramData.".to_string())?;
+    Ok(base.join("KidOS").join("Guardian"))
+}
+
+#[cfg(target_os = "windows")]
+fn pin_marker_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join("parent-pin.initialized"))
+}
+
+#[cfg(target_os = "windows")]
+fn policy_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join("parent-policy.json"))
+}
+
+#[cfg(target_os = "windows")]
+fn pin_is_initialized() -> bool {
+    pin_marker_path().map(|path| path.exists()).unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn mark_pin_initialized() -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
+    fs::write(pin_marker_path()?, b"1").map_err(|_| "Guardian could not record parent PIN initialization.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn load_parent_policy() -> ParentPolicyConfig {
+    let Ok(path) = policy_path() else { return ParentPolicyConfig::default(); };
+    let Ok(contents) = fs::read_to_string(path) else { return ParentPolicyConfig::default(); };
+    serde_json::from_str(&contents).unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn persist_parent_policy(policy: &ParentPolicyConfig) -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
+    let path = policy_path()?;
+    let temp = path.with_extension("json.tmp");
+    let encoded = serde_json::to_vec_pretty(policy)
+        .map_err(|_| "Guardian could not encode parent policy.".to_string())?;
+    fs::write(&temp, encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
+    fs::rename(&temp, &path).map_err(|_| "Guardian could not finalize parent policy.".to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn verify_parent(
+    authorization: &mut ParentAuthorization<WindowsSecretStore>,
+    pin: &str,
+) -> Result<ParentAuthorizationResult, String> {
+    authorization
+        .verify(pin, now_seconds())
+        .map_err(|_| "Guardian could not verify the parent PIN.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn verification_response(result: ParentAuthorizationResult) -> PrivilegedResponse {
+    match result {
+        ParentAuthorizationResult::Authorized => PrivilegedResponse::ParentVerification { authorized: true, locked: false },
+        ParentAuthorizationResult::Denied => PrivilegedResponse::ParentVerification { authorized: false, locked: false },
+        ParentAuthorizationResult::Locked => PrivilegedResponse::ParentVerification { authorized: false, locked: true },
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -96,6 +185,8 @@ fn handle_request(
     bytes: &[u8],
     nonce_tracker: &mut PrivilegedNonceTracker,
     lockdown_service: &mut WindowsLockdownService<WindowsAssignedAccessAdapter>,
+    parent_authorization: &mut ParentAuthorization<WindowsSecretStore>,
+    parent_policy: &mut GuardianPolicyStore,
 ) -> PrivilegedResponse {
     let envelope = match decode_privileged_request(bytes) {
         Ok(envelope) => envelope,
@@ -111,6 +202,58 @@ fn handle_request(
             let (state, reason) = current_platform_state();
             PrivilegedResponse::Status { state, reason }
         }
+        PrivilegedRequest::ConfigureParentPin { new_pin, current_pin } => {
+            if !(4..=8).contains(&new_pin.len()) || !new_pin.chars().all(|ch| ch.is_ascii_digit()) {
+                return error_response("invalid_parent_pin", "Parent PIN must contain 4 through 8 digits.");
+            }
+
+            if pin_is_initialized() {
+                let Some(current_pin) = current_pin else {
+                    return error_response("current_parent_pin_required", "Changing the parent PIN requires the current PIN.");
+                };
+                match verify_parent(parent_authorization, &current_pin) {
+                    Ok(ParentAuthorizationResult::Authorized) => {}
+                    Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Current parent PIN was not accepted."),
+                    Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                    Err(error) => return error_response("parent_pin_error", error),
+                }
+            }
+
+            let store = WindowsSecretStore::new("KidOSGuardian");
+            if let Err(error) = store.put_secret(PARENT_PIN_KEY, &new_pin) {
+                return error_response("parent_pin_store_failed", format!("Guardian could not protect the parent PIN: {error}"));
+            }
+            *parent_authorization = ParentAuthorization::new(WindowsSecretStore::new("KidOSGuardian"), PARENT_PIN_KEY);
+            if let Err(error) = mark_pin_initialized() {
+                return error_response("parent_pin_marker_failed", error);
+            }
+            PrivilegedResponse::Ack { message: "Parent PIN is protected by the KidOS Guardian service.".into() }
+        }
+        PrivilegedRequest::VerifyParentPin { pin } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(result) => verification_response(result),
+                Err(error) => error_response("parent_pin_error", error),
+            }
+        }
+        PrivilegedRequest::SaveParentPolicy { pin, policy } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
+
+            if let Err(error) = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone()) {
+                return error_response("invalid_parent_policy", error.to_string());
+            }
+            if let Err(error) = persist_parent_policy(&policy) {
+                return error_response("parent_policy_store_failed", error);
+            }
+            PrivilegedResponse::Ack { message: "Parent safety policy saved by Guardian.".into() }
+        }
+        PrivilegedRequest::GetParentPolicy => PrivilegedResponse::ParentPolicy {
+            policy: parent_policy.current_parent_policy().clone(),
+        },
         PrivilegedRequest::ApplyLockdown { profile } => {
             let profile = match profile_from_ipc(profile) {
                 Ok(profile) => profile,
@@ -125,10 +268,33 @@ fn handle_request(
                 ),
             }
         }
-        PrivilegedRequest::ParentUnlock { .. } | PrivilegedRequest::RemoveLockdown => error_response(
-            "parent_authorization_required",
-            "Parent-sensitive lockdown changes are denied at the service boundary until service-side parent authorization is presented.",
-        ),
+        PrivilegedRequest::ParentUnlock { pin, duration_minutes } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
+            match lockdown_service.begin_parent_unlock(true, now_seconds(), duration_minutes) {
+                Ok(grant) => PrivilegedResponse::Status {
+                    state: "parent_unlocked".into(),
+                    reason: Some(format!("Parent maintenance unlock expires at {}.", grant.expires_at)),
+                },
+                Err(error) => error_response("parent_unlock_failed", format!("Guardian rejected parent unlock: {error:?}")),
+            }
+        }
+        PrivilegedRequest::RemoveLockdown { pin } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
+            match lockdown_service.remove_lockdown(true) {
+                Ok(()) => PrivilegedResponse::Status { state: "unmanaged".into(), reason: None },
+                Err(error) => error_response("remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
+            }
+        }
     }
 }
 
@@ -180,6 +346,11 @@ pub fn run_pipe_server() {
     let mut nonce_tracker = PrivilegedNonceTracker::default();
     let mut lockdown_service =
         WindowsLockdownService::new(WindowsAssignedAccessAdapter::default());
+    let mut parent_authorization =
+        ParentAuthorization::new(WindowsSecretStore::new("KidOSGuardian"), PARENT_PIN_KEY);
+    let mut parent_policy = GuardianPolicyStore::default();
+    let persisted_policy = load_parent_policy();
+    let _ = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, persisted_policy);
 
     loop {
         let pipe = unsafe {
@@ -218,6 +389,8 @@ pub fn run_pipe_server() {
                 &buffer[..bytes_read as usize],
                 &mut nonce_tracker,
                 &mut lockdown_service,
+                &mut parent_authorization,
+                &mut parent_policy,
             )
         } else {
             error_response("read_failed", "Guardian could not read the privileged request.")
