@@ -41,14 +41,13 @@ pub fn save_parent_policy_with_authorization<S: SecretStore>(authorization: &mut
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn configure_parent_pin(pin: String) -> Result<(), String> {
-    let store = WindowsSecretStore::new("KidOS");
-    configure_parent_pin_with_store(&store, &pin)
+fn configure_parent_pin(pin: String, current_pin: Option<String>) -> Result<(), String> {
+    guardian_ipc::configure_parent_pin(pin, current_pin)
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn configure_parent_pin(_pin: String) -> Result<(), String> { Err("parent PIN storage is available in the Windows KidOS build".into()) }
+fn configure_parent_pin(_pin: String, _current_pin: Option<String>) -> Result<(), String> { Err("parent PIN storage is available in the Windows KidOS build".into()) }
 
 
 #[derive(Debug, Clone, Serialize)]
@@ -60,23 +59,9 @@ struct ParentVerificationDto {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn verify_parent_pin(
-    pin: String,
-    state: tauri::State<'_, LockdownHostState>,
-) -> Result<ParentVerificationDto, String> {
-    let mut authorization = state
-        .parent_authorization
-        .lock()
-        .map_err(|_| "parent authorization state is unavailable".to_string())?;
-
-    match authorization
-        .verify(&pin, now_seconds())
-        .map_err(|_| "unable to verify parent PIN".to_string())?
-    {
-        ParentAuthorizationResult::Authorized => Ok(ParentVerificationDto { authorized: true, locked: false }),
-        ParentAuthorizationResult::Denied => Ok(ParentVerificationDto { authorized: false, locked: false }),
-        ParentAuthorizationResult::Locked => Ok(ParentVerificationDto { authorized: false, locked: true }),
-    }
+fn verify_parent_pin(pin: String) -> Result<ParentVerificationDto, String> {
+    let (authorized, locked) = guardian_ipc::verify_parent_pin(pin)?;
+    Ok(ParentVerificationDto { authorized, locked })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -99,23 +84,14 @@ fn save_parent_policy(
     policy: ParentPolicyConfig,
     state: tauri::State<'_, LockdownHostState>,
 ) -> Result<ParentPolicySaveDto, String> {
-    let mut authorization = state
-        .parent_authorization
-        .lock()
-        .map_err(|_| "parent authorization state is unavailable".to_string())?;
+    guardian_ipc::save_parent_policy(pin, policy.clone())?;
     let mut guardian = state
         .parent_policy
         .lock()
         .map_err(|_| "Guardian policy state is unavailable".to_string())?;
-
-    save_parent_policy_with_authorization(
-        &mut authorization,
-        &mut guardian,
-        &pin,
-        now_seconds(),
-        policy.clone(),
-    )?;
-    persist_parent_policy(&policy)?;
+    guardian
+        .replace_parent_policy(GuardianActor::ParentAuthorized, policy)
+        .map_err(|error| error.to_string())?;
     Ok(ParentPolicySaveDto { saved: true })
 }
 
@@ -269,7 +245,12 @@ impl LockdownHostState {
             service: Mutex::new(WindowsLockdownService::new(WindowsAssignedAccessAdapter::default())),
             managed_account: Mutex::new(None),
             parent_authorization: Mutex::new(ParentAuthorization::new(WindowsSecretStore::new("KidOS"), PARENT_PIN_KEY)),
-            parent_policy: Mutex::new(load_persisted_parent_policy()),
+            parent_policy: Mutex::new({
+                let mut store = GuardianPolicyStore::default();
+                let policy = guardian_ipc::get_parent_policy().unwrap_or_else(|_| load_persisted_parent_policy().current_parent_policy().clone());
+                let _ = store.replace_parent_policy(GuardianActor::ParentAuthorized, policy);
+                store
+            }),
         }
     }
 }
@@ -464,40 +445,38 @@ fn configure_windows_lockdown(_request: ConfigureWindowsLockdownRequest) -> Resu
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn request_parent_maintenance_unlock(
+    pin: String,
     duration_minutes: u64,
-    state: tauri::State<'_, LockdownHostState>,
 ) -> Result<ParentUnlockGrantDto, String> {
     let now = now_seconds();
-    let mut service = state.service.lock().map_err(|_| "Guardian lockdown state is unavailable".to_string())?;
-    let grant = service
-        .begin_parent_unlock(true, now, duration_minutes)
-        .map_err(|error| format!("Guardian rejected maintenance unlock: {error:?}"))?;
+    let (_state, reason) = guardian_ipc::parent_unlock(pin, duration_minutes)?;
+    let expires_at = now.saturating_add(duration_minutes.saturating_mul(60));
     Ok(ParentUnlockGrantDto {
         granted_at: iso_from_unix(now),
-        expires_at: iso_from_unix(grant.expires_at),
+        expires_at: iso_from_unix(expires_at),
     })
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn request_parent_maintenance_unlock(_duration_minutes: u64) -> Result<ParentUnlockGrantDto, String> {
+fn request_parent_maintenance_unlock(_pin: String, _duration_minutes: u64) -> Result<ParentUnlockGrantDto, String> {
     Err("Windows Lockdown Mode is unavailable on this platform.".into())
 }
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn remove_windows_lockdown(state: tauri::State<'_, LockdownHostState>) -> Result<LockdownStatusDto, String> {
-    let mut service = state.service.lock().map_err(|_| "Guardian lockdown state is unavailable".to_string())?;
-    service
-        .remove_lockdown(true)
-        .map_err(|error| format!("Guardian could not remove Assigned Access: {error:?}"))?;
-    *state.managed_account.lock().map_err(|_| "Guardian account state is unavailable".to_string())? = None;
-    Ok(status_dto(service.status(now_seconds()), None, None))
+fn remove_windows_lockdown(pin: String, state: tauri::State<'_, LockdownHostState>) -> Result<LockdownStatusDto, String> {
+    let (ipc_state, reason) = guardian_ipc::remove_lockdown(pin)?;
+    *state
+        .managed_account
+        .lock()
+        .map_err(|_| "Guardian account state is unavailable".to_string())? = None;
+    Ok(ipc_status_dto(ipc_state, None, reason))
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn remove_windows_lockdown() -> Result<LockdownStatusDto, String> {
+fn remove_windows_lockdown(_pin: String) -> Result<LockdownStatusDto, String> {
     lockdown_status()
 }
 
