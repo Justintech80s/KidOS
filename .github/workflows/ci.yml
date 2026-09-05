@@ -29,6 +29,8 @@ jobs:
         run: cargo test --workspace
       - name: Check Rust workspace
         run: cargo check --workspace
+      - name: Build privileged KidOS Guardian service
+        run: cargo build -p kidos-guardian-host --release
       - name: Build KidOS Windows installer
         run: pnpm --filter @kidos/shell tauri build --bundles nsis
       - name: Upload Windows installer
