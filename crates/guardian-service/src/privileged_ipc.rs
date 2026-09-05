@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::ParentPolicyConfig;
 use std::collections::HashSet;
 
 pub const GUARDIAN_PIPE_NAME: &str = r"\\.\pipe\KidOSGuardian.v1";
@@ -34,9 +35,12 @@ pub struct IpcLockdownProfile {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrivilegedRequest {
     Status,
+    ConfigureParentPin { new_pin: String, current_pin: Option<String> },
+    VerifyParentPin { pin: String },
+    SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
     ApplyLockdown { profile: IpcLockdownProfile },
-    ParentUnlock { duration_minutes: u64 },
-    RemoveLockdown,
+    ParentUnlock { pin: String, duration_minutes: u64 },
+    RemoveLockdown { pin: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +56,8 @@ pub struct PrivilegedRequestEnvelope {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
+    ParentVerification { authorized: bool, locked: bool },
+    Ack { message: String },
     Error { code: String, message: String },
 }
 
