@@ -12,6 +12,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 #[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(target_os = "windows")]
 use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use guardian_service::windows_lockdown::{
@@ -144,6 +146,129 @@ fn evaluate_download_with_parent_policy(
 #[tauri::command]
 fn evaluate_download_with_parent_policy(file_name: String, mime_type: String) -> Result<String, String> {
     Ok(commands::evaluate_download_impl(&file_name, &mime_type).to_string())
+}
+
+
+#[cfg(target_os = "windows")]
+static SAFE_BROWSER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(target_os = "windows")]
+fn is_web_domain(host: &str, domain: &str) -> bool {
+    host.eq_ignore_ascii_case(domain)
+        || host
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{}", domain.to_ascii_lowercase()))
+}
+
+#[cfg(target_os = "windows")]
+fn harden_safe_browser_url(destination: &str) -> Result<tauri::Url, String> {
+    let mut url = tauri::Url::parse(destination)
+        .map_err(|_| "KidOS could not parse the web address.".to_string())?;
+
+    if !matches!(url.scheme(), "https" | "http") {
+        return Err("KidOS Safe Browser allows only http and https destinations.".into());
+    }
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| "KidOS Safe Browser requires a valid web host.".to_string())?
+        .to_string();
+
+    if is_web_domain(&host, "google.com") && url.path().starts_with("/search") {
+        let mut pairs = url.query_pairs().into_owned().collect::<Vec<_>>();
+        pairs.retain(|(key, _)| key != "safe");
+        pairs.push(("safe".into(), "active".into()));
+        url.query_pairs_mut().clear().extend_pairs(pairs);
+    }
+
+    if is_web_domain(&host, "bing.com") && url.path().starts_with("/search") {
+        let mut pairs = url.query_pairs().into_owned().collect::<Vec<_>>();
+        pairs.retain(|(key, _)| key != "adlt");
+        pairs.push(("adlt".into(), "strict".into()));
+        url.query_pairs_mut().clear().extend_pairs(pairs);
+    }
+
+    Ok(url)
+}
+
+#[cfg(target_os = "windows")]
+fn safe_browser_navigation_allowed(url: &tauri::Url) -> bool {
+    if !matches!(url.scheme(), "https" | "http") {
+        return false;
+    }
+
+    let Ok(policy) = guardian_ipc::get_parent_policy() else {
+        return false;
+    };
+
+    if commands::evaluate_navigation_with_policy_impl(url.as_str(), &policy) != "allow" {
+        return false;
+    }
+
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    if is_web_domain(host, "google.com")
+        && url.path().starts_with("/search")
+        && url.query_pairs().find(|(key, value)| key == "safe" && value == "active").is_none()
+    {
+        return false;
+    }
+
+    if is_web_domain(host, "bing.com")
+        && url.path().starts_with("/search")
+        && url.query_pairs().find(|(key, value)| key == "adlt" && value == "strict").is_none()
+    {
+        return false;
+    }
+
+    true
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn open_protected_browser(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<(), String> {
+    let hardened = harden_safe_browser_url(&url)?;
+    if !safe_browser_navigation_allowed(&hardened) {
+        return Err("KidOS Guardian blocked this web destination.".into());
+    }
+
+    let label = format!(
+        "kidos-safe-browser-{}-{}",
+        now_seconds(),
+        SAFE_BROWSER_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        label,
+        tauri::WebviewUrl::External(hardened),
+    )
+    .title("KidOS Safe Browser")
+    .maximized(true)
+    .decorations(false)
+    .on_navigation(|next_url| safe_browser_navigation_allowed(next_url))
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .on_download(|_, event| {
+        match event {
+            tauri::webview::DownloadEvent::Requested { .. } => false,
+            _ => true,
+        }
+    })
+    .build()
+    .map_err(|error| format!("KidOS could not open the protected browser: {error}"))?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+async fn open_protected_browser(_app: tauri::AppHandle, _url: String) -> Result<(), String> {
+    Err("KidOS protected browser window is currently available in the Windows build.".into())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -493,6 +618,7 @@ pub fn run() {
             save_parent_policy,
             evaluate_navigation_with_parent_policy,
             evaluate_download_with_parent_policy,
+            open_protected_browser,
             plan_workspace,
             evaluate_navigation,
             evaluate_download,
