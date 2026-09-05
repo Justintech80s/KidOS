@@ -23,6 +23,10 @@ use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
+    NetworkManagement::NetManagement::{
+        NetApiBufferFree, NetUserGetInfo, USER_INFO_1, USER_PRIV_ADMIN, USER_PRIV_GUEST,
+        USER_PRIV_USER, NERR_Success,
+    },
     Security::{Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW, SECURITY_ATTRIBUTES},
     Storage::FileSystem::{FlushFileBuffers, ReadFile, WriteFile},
     System::{
@@ -125,10 +129,102 @@ fn error_response(code: impl Into<String>, message: impl Into<String>) -> Privil
 }
 
 #[cfg(target_os = "windows")]
-fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<LockdownProfile, String> {
-    if profile.account.trim().is_empty() {
-        return Err("child account cannot be empty".into());
+fn validate_standard_windows_account(account: &str) -> Result<(), String> {
+    let account = account.trim();
+    if account.is_empty() || account.len() > 256 {
+        return Err("Windows child account name is invalid.".into());
     }
+
+    let account_wide = wide(account);
+    let mut buffer = null_mut();
+    let status = unsafe { NetUserGetInfo(null_mut(), account_wide.as_ptr(), 1, &mut buffer) };
+    if status != NERR_Success {
+        return Err(format!("Windows child account '{account}' was not found."));
+    }
+
+    let info = unsafe { &*(buffer as *const USER_INFO_1) };
+    let privilege = info.usri1_priv;
+    unsafe { NetApiBufferFree(buffer) };
+
+    match privilege {
+        USER_PRIV_USER => Ok(()),
+        USER_PRIV_ADMIN => Err("Windows Lockdown Mode cannot use an administrator account.".into()),
+        USER_PRIV_GUEST => Err("Windows Lockdown Mode cannot use a guest account.".into()),
+        _ => Err("KidOS could not confirm that the selected Windows account is a standard user.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn prohibited_executable_name(path: &std::path::Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    matches!(
+        name.as_str(),
+        "cmd.exe"
+            | "powershell.exe"
+            | "pwsh.exe"
+            | "regedit.exe"
+            | "wt.exe"
+            | "wscript.exe"
+            | "cscript.exe"
+            | "mmc.exe"
+            | "taskmgr.exe"
+            | "reg.exe"
+            | "schtasks.exe"
+            | "sc.exe"
+            | "net.exe"
+            | "net1.exe"
+            | "mshta.exe"
+            | "rundll32.exe"
+            | "control.exe"
+            | "computerdefaults.exe"
+            | "eventvwr.exe"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn validate_approved_executable(app: &guardian_service::privileged_ipc::IpcApprovedApp) -> Result<String, String> {
+    let raw = app.executable_path.trim();
+    if raw.is_empty() || raw.len() > 1024 {
+        return Err(format!("Approved app '{}' has an invalid executable path.", app.display_name));
+    }
+
+    let path = std::path::Path::new(raw);
+    if !path.is_absolute() {
+        return Err(format!("Approved app '{}' must use an absolute executable path.", app.display_name));
+    }
+    if path.extension().and_then(|value| value.to_str()).map(|value| !value.eq_ignore_ascii_case("exe")).unwrap_or(true) {
+        return Err(format!("Approved app '{}' must point to a .exe file.", app.display_name));
+    }
+    if prohibited_executable_name(path) {
+        return Err(format!("Approved app '{}' is a prohibited Windows administrative/system tool.", app.display_name));
+    }
+
+    let metadata = fs::metadata(path)
+        .map_err(|_| format!("Approved app '{}' does not exist at the selected path.", app.display_name))?;
+    if !metadata.is_file() {
+        return Err(format!("Approved app '{}' path is not a file.", app.display_name));
+    }
+
+    let canonical = fs::canonicalize(path)
+        .map_err(|_| format!("KidOS could not resolve the approved app '{}' path.", app.display_name))?;
+    if prohibited_executable_name(&canonical) {
+        return Err(format!("Approved app '{}' resolves to a prohibited Windows administrative/system tool.", app.display_name));
+    }
+
+    canonical
+        .to_str()
+        .map(|value| value.to_string())
+        .ok_or_else(|| format!("Approved app '{}' path is not valid Unicode.", app.display_name))
+}
+
+#[cfg(target_os = "windows")]
+fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<LockdownProfile, String> {
+    validate_standard_windows_account(&profile.account)?;
     if profile.apps.is_empty() || profile.apps.len() > 64 {
         return Err("approved app list must contain 1 through 64 entries".into());
     }
@@ -148,10 +244,11 @@ fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfil
         {
             return Err("approved application entry is invalid".into());
         }
+        let executable_path = validate_approved_executable(&app)?;
         apps.push(ApprovedApp {
             id: app.id,
             display_name: app.display_name,
-            executable_path: app.executable_path,
+            executable_path,
         });
     }
 
