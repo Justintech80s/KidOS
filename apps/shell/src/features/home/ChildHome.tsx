@@ -215,7 +215,16 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
     );
 
     if (result.state === 'load') {
-      setNavigationState(`Opening ${result.url}`);
+      if (api.openProtectedBrowser) {
+        try {
+          await api.openProtectedBrowser(result.url);
+          setNavigationState('Opened in KidOS Safe Browser');
+        } catch {
+          setNavigationState('KidOS Safe Browser could not open this destination');
+        }
+      } else {
+        setNavigationState(`Approved by KidOS: ${result.url}`);
+      }
     } else if (result.state === 'blocked') {
       setNavigationState('Site blocked by KidOS');
     } else {
