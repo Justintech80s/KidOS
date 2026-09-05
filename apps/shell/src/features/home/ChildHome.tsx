@@ -139,8 +139,6 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
   const [cameraStatus, setCameraStatus] = useState('Camera is off. KidOS asks before using it.');
   const [messageText, setMessageText] = useState('');
   const [messages, setMessages] = useState(['Parent: Have a great learning day!']);
-  const [largeText, setLargeText] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
 
   const demoMode = useMemo(
     () =>
