@@ -18,6 +18,7 @@ export interface KidOSApi {
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
+  openProtectedBrowser?(url: string): Promise<void>;
   guardianStatus(): Promise<GuardianStatus>;
   configureParentPin?(pin: string, currentPin?: string): Promise<void>;
   verifyParentPin?(pin: string): Promise<ParentVerification>;
@@ -32,6 +33,7 @@ export const tauriKidOSApi: KidOSApi = {
   planWorkspace(prompt) { return invoke<WorkspacePlan>('plan_workspace', { prompt }); },
   evaluateNavigation(url) { return invoke<PolicyDecision>('evaluate_navigation_with_parent_policy', { url }); },
   evaluateDownload(fileName, mimeType) { return invoke<PolicyDecision>('evaluate_download_with_parent_policy', { fileName, mimeType }); },
+  openProtectedBrowser(url) { return invoke<void>('open_protected_browser', { url }); },
   guardianStatus() { return invoke<GuardianStatus>('get_guardian_status'); },
   configureParentPin(pin, currentPin) { return invoke<void>('configure_parent_pin', { pin, currentPin: currentPin ?? null }); },
   verifyParentPin(pin) { return invoke<ParentVerification>('verify_parent_pin', { pin }); },
