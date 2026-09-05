@@ -4,5 +4,6 @@ members = [
   "apps/shell/src-tauri",
   "crates/policy-core",
   "crates/secure-store",
-  "crates/guardian-service"
+  "crates/guardian-service",
+  "crates/guardian-host"
 ]
