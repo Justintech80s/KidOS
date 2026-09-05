@@ -36,5 +36,16 @@ jobs:
         run: node --test tests/security/lockdown-source-safety.test.mjs
       - name: Verify packaging metadata
         run: node tests/packaging/tauri-config.test.mjs
+      - name: Build privileged KidOS Guardian service
+        run: cargo build -p kidos-guardian-host --release
       - name: Build KidOS Windows installer
         run: pnpm --filter @kidos/shell tauri build --bundles nsis
+      - name: Upload Guardian service bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Guardian-Service
+          path: |
+            target/release/kidos-guardian-host.exe
+            scripts/install-guardian-service.ps1
+            scripts/uninstall-guardian-service.ps1
+          if-no-files-found: error
