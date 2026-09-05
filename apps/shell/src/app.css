@@ -910,3 +910,46 @@ button { -webkit-tap-highlight-color: transparent; }
 @media(max-width:760px){
   .guardian-policy-grid { grid-template-columns: 1fr; }
 }
+
+
+.guardian-divider {
+  height: 1px;
+  margin: 12px 0;
+  background: linear-gradient(90deg, transparent, #d5e4ec, transparent);
+}
+.guardian-wide-field { grid-column: 1 / -1; }
+.approved-app-list {
+  display: grid;
+  gap: 9px;
+}
+.approved-app-row {
+  display: grid;
+  grid-template-columns: 34px minmax(110px, .7fr) minmax(160px, 1.4fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dbe8ef;
+  border-radius: 15px;
+  background: #f8fbfd;
+  color: #355d74;
+}
+.approved-app-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #718797;
+}
+.approved-app-row button {
+  border: 0;
+  border-radius: 11px;
+  padding: 8px 10px;
+  background: #fff1f1;
+  color: #9a3d3d;
+  font-weight: 800;
+  cursor: pointer;
+}
+@media(max-width:760px){
+  .guardian-wide-field { grid-column: auto; }
+  .approved-app-row { grid-template-columns: 28px 1fr auto; }
+  .approved-app-row small { grid-column: 2 / -1; }
+}
