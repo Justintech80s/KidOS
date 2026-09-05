@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 guardian-service = { path = "../guardian-service" }
 secure-store = { path = "../secure-store" }
+policy-core = { path = "../policy-core" }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
