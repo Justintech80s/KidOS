@@ -1,4 +1,6 @@
 #[cfg(target_os = "windows")]
+mod ipc_server;
+#[cfg(target_os = "windows")]
 mod windows_host {
     use guardian_service::windows_lockdown::{
         LockdownInspection, WindowsAssignedAccessAdapter, WindowsLockdownAdapter,
@@ -61,6 +63,8 @@ mod windows_host {
             wait_hint: Duration::default(),
             process_id: None,
         })?;
+
+        std::thread::spawn(|| ipc_server::run_pipe_server());
 
         let adapter = WindowsAssignedAccessAdapter::default();
         while !stopping.load(Ordering::SeqCst) {
