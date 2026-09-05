@@ -11,6 +11,8 @@ assert.match(config.version, /^\d+\.\d+\.\d+$/);
 assert.deepEqual(config.bundle?.targets, ['nsis']);
 assert.deepEqual(config.bundle?.icon, ['icons/icon.ico']);
 assert.equal(config.bundle?.active, true);
+assert.equal(config.bundle?.windows?.nsis?.installMode, 'perMachine');
+assert.equal(config.bundle?.windows?.nsis?.installerHooks, './windows/hooks.nsh');
 
 // The child-facing shell must feel like its own environment instead of a normal
 // resizable Windows app. Guardian/Assigned Access remains the security boundary;
@@ -29,4 +31,4 @@ assert.equal(
   'updater must remain disabled until signing/update infrastructure exists',
 );
 
-console.log('KidOS Windows packaging configuration is immersive-shell and release-bundle ready.');
+console.log('KidOS Windows packaging configuration is immersive-shell, per-machine, and Guardian-installer ready.');
