@@ -226,6 +226,125 @@ fn safe_browser_navigation_allowed(url: &tauri::Url) -> bool {
     true
 }
 
+
+#[cfg(target_os = "windows")]
+fn inferred_mime_type(file_name: &str) -> &'static str {
+    let ext = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        "csv" => "text/csv",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "zip" => "application/zip",
+        "rar" => "application/vnd.rar",
+        "7z" => "application/x-7z-compressed",
+        "tar" => "application/x-tar",
+        "gz" => "application/gzip",
+        "exe" => "application/x-msdownload",
+        "msi" => "application/x-msi",
+        "bat" => "application/x-bat",
+        _ => "application/octet-stream",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn archive_requires_deep_scan(file_name: &str) -> bool {
+    let ext = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    matches!(ext.as_str(), "zip" | "rar" | "7z" | "tar" | "gz" | "tgz")
+}
+
+#[cfg(target_os = "windows")]
+fn sanitize_download_file_name(candidate: &str) -> String {
+    let mut result = candidate
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | ' ' | '(' | ')') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+
+    result = result.trim().trim_matches('.').to_string();
+    if result.is_empty() {
+        result = "download.bin".into();
+    }
+    if result.len() > 180 {
+        result.truncate(180);
+    }
+    result
+}
+
+#[cfg(target_os = "windows")]
+fn safe_download_destination(file_name: &str) -> Result<PathBuf, String> {
+    let base = std::env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .ok_or_else(|| "KidOS could not resolve the child Downloads folder.".to_string())?;
+    let directory = base.join("Downloads").join("KidOS");
+    fs::create_dir_all(&directory)
+        .map_err(|_| "KidOS could not create its protected Downloads folder.".to_string())?;
+    Ok(directory.join(sanitize_download_file_name(file_name)))
+}
+
+#[cfg(target_os = "windows")]
+fn browser_download_allowed(
+    url: &tauri::Url,
+    proposed_destination: &std::path::Path,
+) -> Result<PathBuf, String> {
+    if !matches!(url.scheme(), "https" | "http") {
+        return Err("KidOS blocks downloads from unsupported protocols.".into());
+    }
+
+    let candidate = proposed_destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .or_else(|| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("download.bin");
+
+    let file_name = sanitize_download_file_name(candidate);
+    let mime_type = inferred_mime_type(&file_name).to_string();
+    let archive_high_risk = archive_requires_deep_scan(&file_name);
+
+    let decision = guardian_ipc::evaluate_download(
+        url.to_string(),
+        file_name.clone(),
+        mime_type,
+        archive_high_risk,
+    )?;
+
+    match decision.as_str() {
+        "allow" => safe_download_destination(&file_name),
+        "require_parent" => Err("Parent approval is required for this download.".into()),
+        "block" => Err("KidOS Guardian blocked this download.".into()),
+        _ => Err("KidOS Guardian returned an invalid download decision.".into()),
+    }
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 async fn open_protected_browser(
@@ -255,7 +374,26 @@ async fn open_protected_browser(
     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
     .on_download(|_, event| {
         match event {
-            tauri::webview::DownloadEvent::Requested { .. } => false,
+            tauri::webview::DownloadEvent::Requested { url, destination } => {
+                match browser_download_allowed(url, destination.as_path()) {
+                    Ok(safe_destination) => {
+                        *destination = safe_destination;
+                        true
+                    }
+                    Err(reason) => {
+                        eprintln!("KidOS download denied for {}: {}", url, reason);
+                        false
+                    }
+                }
+            }
+            tauri::webview::DownloadEvent::Finished { url, path, success } => {
+                if success {
+                    eprintln!("KidOS protected download completed: {} -> {:?}", url, path);
+                } else {
+                    eprintln!("KidOS protected download failed: {}", url);
+                }
+                true
+            }
             _ => true,
         }
     })
