@@ -38,6 +38,7 @@ pub enum PrivilegedRequest {
     ConfigureParentPin { new_pin: String, current_pin: Option<String> },
     VerifyParentPin { pin: String },
     SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
+    GetParentPolicy,
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
@@ -57,6 +58,7 @@ pub struct PrivilegedRequestEnvelope {
 pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
     ParentVerification { authorized: bool, locked: bool },
+    ParentPolicy { policy: ParentPolicyConfig },
     Ack { message: String },
     Error { code: String, message: String },
 }
