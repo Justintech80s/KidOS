@@ -45,6 +45,13 @@ pub enum PrivilegedRequest {
         mime_type: String,
         archive_contains_high_risk: bool,
     },
+    EvaluateMedia {
+        file_name: String,
+        category: String,
+        risk: String,
+        high_confidence: bool,
+        classifier_available: bool,
+    },
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
