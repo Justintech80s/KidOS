@@ -21,6 +21,8 @@ use std::{
 #[cfg(target_os = "windows")]
 use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, WindowsSecretStore};
 #[cfg(target_os = "windows")]
+use policy_core::{evaluate_download as evaluate_download_policy, DownloadContext, DownloadMode, PolicyDecision};
+#[cfg(target_os = "windows")]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
     NetworkManagement::NetManagement::{
@@ -222,6 +224,30 @@ fn validate_approved_executable(app: &guardian_service::privileged_ipc::IpcAppro
         .ok_or_else(|| format!("Approved app '{}' path is not valid Unicode.", app.display_name))
 }
 
+
+#[cfg(target_os = "windows")]
+fn guardian_download_decision(
+    file_name: &str,
+    mime_type: &str,
+    archive_contains_high_risk: bool,
+    policy: &ParentPolicyConfig,
+) -> &'static str {
+    let mode = match policy.download_mode {
+        guardian_service::ParentDownloadMode::BlockHighRisk => DownloadMode::BlockHighRisk,
+        guardian_service::ParentDownloadMode::RequireParentHighRisk => DownloadMode::RequireParentHighRisk,
+    };
+
+    let context = DownloadContext::new(file_name, mime_type, policy.child_age)
+        .with_download_mode(mode)
+        .with_archive_contains_high_risk(archive_contains_high_risk);
+
+    match evaluate_download_policy(&context) {
+        PolicyDecision::Allow => "allow",
+        PolicyDecision::Block => "block",
+        PolicyDecision::RequireParent => "require_parent",
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<LockdownProfile, String> {
     validate_standard_windows_account(&profile.account)?;
@@ -351,6 +377,26 @@ fn handle_request(
         PrivilegedRequest::GetParentPolicy => PrivilegedResponse::ParentPolicy {
             policy: parent_policy.current_parent_policy().clone(),
         },
+        PrivilegedRequest::EvaluateDownload {
+            url,
+            file_name,
+            mime_type,
+            archive_contains_high_risk,
+        } => {
+            if !(url.starts_with("https://") || url.starts_with("http://")) {
+                return error_response("invalid_download_url", "KidOS downloads must originate from http or https.");
+            }
+            if file_name.trim().is_empty() || file_name.len() > 260 {
+                return error_response("invalid_download_name", "KidOS rejected an invalid download filename.");
+            }
+            let decision = guardian_download_decision(
+                &file_name,
+                &mime_type,
+                archive_contains_high_risk,
+                parent_policy.current_parent_policy(),
+            );
+            PrivilegedResponse::PolicyDecision { decision: decision.into() }
+        }
         PrivilegedRequest::ApplyLockdown { profile } => {
             let profile = match profile_from_ipc(profile) {
                 Ok(profile) => profile,
