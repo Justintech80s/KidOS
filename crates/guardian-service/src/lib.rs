@@ -1,6 +1,7 @@
 mod ipc;
 mod parent_policy;
 mod policy_store;
+pub mod privileged_ipc;
 mod safety_events;
 mod service_state;
 pub mod windows_lockdown;
