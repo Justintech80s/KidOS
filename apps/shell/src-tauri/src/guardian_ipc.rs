@@ -179,3 +179,25 @@ pub fn evaluate_download(
         _ => Err("Guardian returned an unexpected download-policy response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+pub fn evaluate_media(
+    file_name: String,
+    category: String,
+    risk: String,
+    high_confidence: bool,
+    classifier_available: bool,
+) -> Result<String, String> {
+    match send(PrivilegedRequest::EvaluateMedia {
+        file_name,
+        category,
+        risk,
+        high_confidence,
+        classifier_available,
+    })? {
+        PrivilegedResponse::PolicyDecision { decision } => Ok(decision),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected media-policy response.".into()),
+    }
+}
