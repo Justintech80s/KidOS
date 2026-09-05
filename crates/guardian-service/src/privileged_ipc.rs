@@ -39,6 +39,12 @@ pub enum PrivilegedRequest {
     VerifyParentPin { pin: String },
     SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
     GetParentPolicy,
+    EvaluateDownload {
+        url: String,
+        file_name: String,
+        mime_type: String,
+        archive_contains_high_risk: bool,
+    },
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
@@ -59,6 +65,7 @@ pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
     ParentVerification { authorized: bool, locked: bool },
     ParentPolicy { policy: ParentPolicyConfig },
+    PolicyDecision { decision: String },
     Ack { message: String },
     Error { code: String, message: String },
 }
