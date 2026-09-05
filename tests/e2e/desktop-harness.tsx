@@ -95,7 +95,7 @@ export function KidOSDesktopHarness({
         managedAccount: request.account,
       };
     },
-    async requestParentMaintenanceUnlock() {
+    async requestParentMaintenanceUnlock(_pin, _durationMinutes) {
       const grant = {
         grantedAt: '2026-09-03T00:45:00Z',
         expiresAt: '2026-09-03T01:00:00Z',
@@ -104,7 +104,7 @@ export function KidOSDesktopHarness({
       setUnlockExpiresAt(grant.expiresAt);
       return grant;
     },
-    async removeWindowsLockdown() {
+    async removeWindowsLockdown(_pin) {
       setLockdownState('unmanaged');
       setUnlockExpiresAt(undefined);
       return { state: 'unmanaged', capability: windowsCapability };
