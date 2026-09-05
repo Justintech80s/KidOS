@@ -19,13 +19,13 @@ export interface KidOSApi {
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   guardianStatus(): Promise<GuardianStatus>;
-  configureParentPin?(pin: string): Promise<void>;
+  configureParentPin?(pin: string, currentPin?: string): Promise<void>;
   verifyParentPin?(pin: string): Promise<ParentVerification>;
   saveParentPolicy?(pin: string, policy: ParentPolicyConfig): Promise<{ saved: boolean }>;
   lockdownStatus(): Promise<LockdownStatus>;
   configureWindowsLockdown(request: ConfigureWindowsLockdownRequest): Promise<LockdownStatus>;
-  requestParentMaintenanceUnlock(durationMinutes: number): Promise<ParentUnlockGrant>;
-  removeWindowsLockdown(): Promise<LockdownStatus>;
+  requestParentMaintenanceUnlock(pin: string, durationMinutes: number): Promise<ParentUnlockGrant>;
+  removeWindowsLockdown(pin: string): Promise<LockdownStatus>;
 }
 
 export const tauriKidOSApi: KidOSApi = {
@@ -33,11 +33,11 @@ export const tauriKidOSApi: KidOSApi = {
   evaluateNavigation(url) { return invoke<PolicyDecision>('evaluate_navigation_with_parent_policy', { url }); },
   evaluateDownload(fileName, mimeType) { return invoke<PolicyDecision>('evaluate_download_with_parent_policy', { fileName, mimeType }); },
   guardianStatus() { return invoke<GuardianStatus>('get_guardian_status'); },
-  configureParentPin(pin) { return invoke<void>('configure_parent_pin', { pin }); },
+  configureParentPin(pin, currentPin) { return invoke<void>('configure_parent_pin', { pin, currentPin: currentPin ?? null }); },
   verifyParentPin(pin) { return invoke<ParentVerification>('verify_parent_pin', { pin }); },
   saveParentPolicy(pin, policy) { return invoke<{ saved: boolean }>('save_parent_policy', { pin, policy }); },
   lockdownStatus() { return invoke<LockdownStatus>('lockdown_status'); },
   configureWindowsLockdown(request) { return invoke<LockdownStatus>('configure_windows_lockdown', { request }); },
-  requestParentMaintenanceUnlock(durationMinutes) { return invoke<ParentUnlockGrant>('request_parent_maintenance_unlock', { durationMinutes }); },
-  removeWindowsLockdown() { return invoke<LockdownStatus>('remove_windows_lockdown'); },
+  requestParentMaintenanceUnlock(pin, durationMinutes) { return invoke<ParentUnlockGrant>('request_parent_maintenance_unlock', { pin, durationMinutes }); },
+  removeWindowsLockdown(pin) { return invoke<LockdownStatus>('remove_windows_lockdown', { pin }); },
 };
