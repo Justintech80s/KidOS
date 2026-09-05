@@ -6,6 +6,7 @@ use guardian_service::{
         PRIVILEGED_PROTOCOL_VERSION,
     },
     windows_lockdown::{AccountRole, LockdownProfile},
+    ParentPolicyConfig,
 };
 #[cfg(target_os = "windows")]
 use std::{
@@ -101,5 +102,60 @@ pub fn apply(profile: &LockdownProfile) -> Result<(String, Option<String>), Stri
     })? {
         PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
         PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+    }
+}
+
+
+#[cfg(target_os = "windows")]
+pub fn configure_parent_pin(new_pin: String, current_pin: Option<String>) -> Result<(), String> {
+    match send(PrivilegedRequest::ConfigureParentPin { new_pin, current_pin })? {
+        PrivilegedResponse::Ack { .. } => Ok(()),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected PIN configuration response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn verify_parent_pin(pin: String) -> Result<(bool, bool), String> {
+    match send(PrivilegedRequest::VerifyParentPin { pin })? {
+        PrivilegedResponse::ParentVerification { authorized, locked } => Ok((authorized, locked)),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected parent verification response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn save_parent_policy(pin: String, policy: ParentPolicyConfig) -> Result<(), String> {
+    match send(PrivilegedRequest::SaveParentPolicy { pin, policy })? {
+        PrivilegedResponse::Ack { .. } => Ok(()),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected policy response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_parent_policy() -> Result<ParentPolicyConfig, String> {
+    match send(PrivilegedRequest::GetParentPolicy)? {
+        PrivilegedResponse::ParentPolicy { policy } => Ok(policy),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected policy response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn parent_unlock(pin: String, duration_minutes: u64) -> Result<(String, Option<String>), String> {
+    match send(PrivilegedRequest::ParentUnlock { pin, duration_minutes })? {
+        PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected unlock response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn remove_lockdown(pin: String) -> Result<(String, Option<String>), String> {
+    match send(PrivilegedRequest::RemoveLockdown { pin })? {
+        PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected lockdown removal response.".into()),
     }
 }
