@@ -1,4 +1,6 @@
 pub mod commands;
+#[cfg(target_os = "windows")]
+mod guardian_ipc;
 
 use commands::{evaluate_download, evaluate_navigation, get_guardian_status, plan_workspace};
 use guardian_service::{GuardianActor, GuardianPolicyStore, ParentPolicyConfig};
@@ -336,6 +338,22 @@ fn status_dto(
     }
 }
 
+
+#[cfg(target_os = "windows")]
+fn ipc_status_dto(
+    state: String,
+    managed_account: Option<ManagedAccountDto>,
+    reason: Option<String>,
+) -> LockdownStatusDto {
+    LockdownStatusDto {
+        state,
+        capability: capability(),
+        managed_account,
+        parent_unlock: None,
+        reason,
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn account_role(value: &str) -> AccountRole {
     match value {
@@ -390,9 +408,20 @@ fn build_profile(request: &ConfigureWindowsLockdownRequest) -> Result<LockdownPr
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn lockdown_status(state: tauri::State<'_, LockdownHostState>) -> Result<LockdownStatusDto, String> {
-    let mut service = state.service.lock().map_err(|_| "Guardian lockdown state is unavailable".to_string())?;
-    let managed = state.managed_account.lock().map_err(|_| "Guardian account state is unavailable".to_string())?.clone();
-    Ok(status_dto(service.status(now_seconds()), managed, None))
+    let managed = state
+        .managed_account
+        .lock()
+        .map_err(|_| "Guardian account state is unavailable".to_string())?
+        .clone();
+
+    match guardian_ipc::status() {
+        Ok((ipc_state, reason)) => Ok(ipc_status_dto(ipc_state, managed, reason)),
+        Err(error) => Ok(ipc_status_dto(
+            "restricted_safe_mode".into(),
+            managed,
+            Some(format!("Privileged Guardian service unavailable: {error}")),
+        )),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -414,19 +443,16 @@ fn configure_windows_lockdown(
     state: tauri::State<'_, LockdownHostState>,
 ) -> Result<LockdownStatusDto, String> {
     let profile = build_profile(&request)?;
-    let mut service = state.service.lock().map_err(|_| "Guardian lockdown state is unavailable".to_string())?;
 
-    if let Err(error) = service.prepare_and_apply(&profile) {
-        let status = service.status(now_seconds());
-        return Ok(status_dto(
-            status,
-            Some(request.account),
-            Some(format!("Guardian could not apply Assigned Access: {error:?}")),
-        ));
-    }
+    let (ipc_state, reason) = guardian_ipc::apply(&profile)
+        .map_err(|error| format!("Privileged Guardian service rejected lockdown request: {error}"))?;
 
-    *state.managed_account.lock().map_err(|_| "Guardian account state is unavailable".to_string())? = Some(request.account.clone());
-    Ok(status_dto(service.status(now_seconds()), Some(request.account), None))
+    *state
+        .managed_account
+        .lock()
+        .map_err(|_| "Guardian account state is unavailable".to_string())? = Some(request.account.clone());
+
+    Ok(ipc_status_dto(ipc_state, Some(request.account), reason))
 }
 
 #[cfg(not(target_os = "windows"))]
