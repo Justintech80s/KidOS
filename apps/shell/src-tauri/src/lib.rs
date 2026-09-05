@@ -307,6 +307,44 @@ fn safe_download_destination(file_name: &str) -> Result<PathBuf, String> {
     Ok(directory.join(sanitize_download_file_name(file_name)))
 }
 
+
+#[cfg(target_os = "windows")]
+fn is_media_download(file_name: &str) -> bool {
+    let ext = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "mp4" | "webm" | "mov" | "m4v" | "avi"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn quarantine_destination(file_name: &str) -> Result<PathBuf, String> {
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .ok_or_else(|| "KidOS could not resolve its local safety folder.".to_string())?;
+    let directory = base.join("KidOS").join("Quarantine");
+    fs::create_dir_all(&directory)
+        .map_err(|_| "KidOS could not create its media quarantine folder.".to_string())?;
+    Ok(directory.join(format!("{}.quarantine", sanitize_download_file_name(file_name))))
+}
+
+#[cfg(target_os = "windows")]
+fn guardian_media_gate(file_name: &str) -> Result<String, String> {
+    // Until a real image/video classifier supplies a category and confidence,
+    // media is deliberately classified as uncertain and fails closed to parent review.
+    guardian_ipc::evaluate_media(
+        file_name.to_string(),
+        "uncertain".into(),
+        "high".into(),
+        false,
+        false,
+    )
+}
+
 #[cfg(target_os = "windows")]
 fn browser_download_allowed(
     url: &tauri::Url,
@@ -338,6 +376,20 @@ fn browser_download_allowed(
     )?;
 
     match decision.as_str() {
+        "allow" if is_media_download(&file_name) => {
+            match guardian_media_gate(&file_name)?.as_str() {
+                "allow" => safe_download_destination(&file_name),
+                "block" => {
+                    let _ = quarantine_destination(&file_name)?;
+                    Err("KidOS Guardian blocked unsafe media.".into())
+                }
+                "require_parent" => {
+                    let _ = quarantine_destination(&file_name)?;
+                    Err("KidOS quarantined this media until a parent reviews it.".into())
+                }
+                _ => Err("KidOS Guardian returned an invalid media decision.".into()),
+            }
+        }
         "allow" => safe_download_destination(&file_name),
         "require_parent" => Err("Parent approval is required for this download.".into()),
         "block" => Err("KidOS Guardian blocked this download.".into()),
