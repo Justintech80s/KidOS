@@ -54,6 +54,7 @@ pub enum PrivilegedRequest {
     },
     ClassifyMediaFile { path: String },
     ListQuarantine { pin: String },
+    PreviewQuarantine { pin: String, item_id: String },
     ReviewQuarantine {
         pin: String,
         item_id: String,
@@ -90,6 +91,10 @@ pub enum PrivilegedResponse {
     },
     QuarantineItems {
         items: Vec<QuarantineItem>,
+    },
+    QuarantinePreview {
+        mime_type: String,
+        data_base64: String,
     },
     Ack { message: String },
     Error { code: String, message: String },
