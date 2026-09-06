@@ -45,9 +45,11 @@ jobs:
           }
           if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid KidOS release version: $version" }
           $config = Get-Content apps/shell/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-          $cargo = Get-Content apps/shell/src-tauri/Cargo.toml -Raw
+          $shellCargo = Get-Content apps/shell/src-tauri/Cargo.toml -Raw
+          $guardianCargo = Get-Content crates/guardian-host/Cargo.toml -Raw
           if ($config.version -ne $version) { throw "tauri.conf.json version does not match release version." }
-          if ($cargo -notmatch ('version\s*=\s*"' + [Regex]::Escape($version) + '"')) { throw "kidos-shell Cargo.toml version does not match release version." }
+          if ($shellCargo -notmatch ('version\s*=\s*"' + [Regex]::Escape($version) + '"')) { throw "kidos-shell Cargo.toml version does not match release version." }
+          if ($guardianCargo -notmatch ('version\s*=\s*"' + [Regex]::Escape($version) + '"')) { throw "kidos-guardian-host Cargo.toml version does not match release version; updater anti-rollback depends on this version." }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
