@@ -591,7 +591,7 @@ async fn open_protected_browser(
     .on_download(|_, event| {
         match event {
             tauri::webview::DownloadEvent::Requested { url, destination } => {
-                match browser_download_allowed(url, destination.as_path()) {
+                match browser_download_allowed(&url, destination.as_path()) {
                     Ok(safe_destination) => {
                         *destination = safe_destination;
                         true
