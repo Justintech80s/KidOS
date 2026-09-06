@@ -19,7 +19,7 @@ describe('KidOS one-time parent approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
     fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
 
-    expect(await screen.findByText(/Opening https:\/\/unknown\.example\/learn/)).toBeTruthy();
+    expect(await screen.findByText(/Approved by KidOS: https:\/\/unknown\.example\/learn/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
     expect(await screen.findByText('Parent approval required')).toBeTruthy();
