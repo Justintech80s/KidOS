@@ -276,9 +276,19 @@ fn classify_media_file_with_local_ai(path: &str) -> Result<ClassifierResponse, S
         return Err("KidOS classifier received an invalid media path.".into());
     }
 
-    let token = std::env::var("KIDOS_MEDIA_CLASSIFIER_TOKEN")
-        .map_err(|_| "KidOS media classifier token is not configured.".to_string())?;
-    if token.len() < 16 {
+    let token = match std::env::var("KIDOS_MEDIA_CLASSIFIER_TOKEN") {
+        Ok(value) => value,
+        Err(_) => {
+            let path = std::env::var("KIDOS_MEDIA_TOKEN_FILE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian\media-classifier.token"));
+            fs::read_to_string(path)
+                .map_err(|_| "KidOS media classifier token is not configured.".to_string())?
+                .trim()
+                .to_string()
+        }
+    };
+    if token.len() < 32 {
         return Err("KidOS media classifier token is too short.".into());
     }
 
