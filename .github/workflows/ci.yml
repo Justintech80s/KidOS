@@ -52,6 +52,6 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: KidOS-Windows-Installer
+          name: KidOS-Windows-10-11-x64-Experimental
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
