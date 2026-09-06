@@ -76,7 +76,7 @@
   ${EndIf}
 
   Sleep 2500
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ((Get-Service -Name KidOSGuardian -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 20 }; if ((Get-Service -Name KidOSMediaClassifier -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 21 }"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ((Get-Service -Name KidOSGuardian -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 20 }; if ((Get-Service -Name KidOSMediaClassifier -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 21 }; $token=Get-Content ($env:ProgramData+''\KidOS\Guardian\media-classifier.token'') -Raw; $ok=$false; for($i=0;$i -lt 45;$i++){ try { $r=Invoke-RestMethod -Uri ''http://127.0.0.1:8765/health'' -Headers @{''x-kidos-classifier-token''=$token} -TimeoutSec 3; if($r.status -eq ''healthy''){ $ok=$true; break } } catch {}; Start-Sleep -Seconds 2 }; if(-not $ok){ exit 22 }"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -97,6 +97,7 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  Delete "$PROGRAMDATA\KidOS\Guardian\media-classifier.token"
   RMDir /r "$PROGRAMFILES64\KidOS\Guardian"
   RMDir /r "$PROGRAMFILES64\KidOS\MediaClassifier"
   RMDir "$PROGRAMFILES64\KidOS"
