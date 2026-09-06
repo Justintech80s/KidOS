@@ -10,7 +10,7 @@ type ParentDashboardProps = {
   savePolicy: (pin: string, policy: ParentPolicyConfig) => Promise<void>;
   safetySummary?: SafetySummaryData;
   clearSafetyEvents?: () => Promise<void>;
-  lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown' | 'listQuarantineMedia' | 'reviewQuarantineMedia'>;
+  lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown' | 'listQuarantineMedia' | 'previewQuarantineMedia' | 'reviewQuarantineMedia'>;
   initialLockdownStatus?: LockdownStatus;
 };
 
