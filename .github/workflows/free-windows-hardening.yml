@@ -2,6 +2,15 @@ name: KidOS Free Windows Hardening
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/windows/**'
+      - 'scripts/windows/**'
+      - 'apps/shell/**'
+      - 'crates/**'
+      - 'services/media-classifier/**'
+      - '.github/workflows/free-windows-hardening.yml'
   schedule:
     - cron: '31 10 * * 6'
 
