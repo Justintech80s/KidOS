@@ -11,11 +11,9 @@
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier\model"
   File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\model\*.*"
 
-  ; Replace older KidOS services during upgrades.
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSMediaClassifier'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete KidOSMediaClassifier'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSGuardian'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete KidOSGuardian'
+  ; Replace older KidOS services during upgrades. On a first install there is
+  ; nothing to remove, so do this quietly instead of showing harmless SC 1060 errors.
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$names=@(''KidOSMediaClassifier'',''KidOSGuardian''); foreach($name in $names){ $svc=Get-Service -Name $name -ErrorAction SilentlyContinue; if($null -ne $svc){ if($svc.Status -ne ''Stopped''){ Stop-Service -Name $name -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 300 }; & $env:SystemRoot\System32\sc.exe delete $name | Out-Null } }"'
   Sleep 1000
 
   ; Protect service binaries and model files so a standard child account cannot replace them.
@@ -27,9 +25,9 @@
     Abort
   ${EndIf}
 
-  ; Generate a private classifier token, pin the trusted installer publisher when signed,
-  ; and protect Guardian state under ProgramData.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$d=$env:ProgramData+''\KidOS\Guardian''; New-Item -ItemType Directory -Force -Path $d | Out-Null; $b=New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $t=([Convert]::ToHexString($b)).ToLowerInvariant(); Set-Content -Path ($d+''\media-classifier.token'') -Value $t -NoNewline -Encoding ASCII; $s=Get-AuthenticodeSignature -LiteralPath ''$EXEPATH''; if($s.Status -eq ''Valid'' -and $s.SignerCertificate){ Set-Content -Path ($d+''\publisher-thumbprint.txt'') -Value $s.SignerCertificate.Thumbprint -NoNewline -Encoding ASCII }; icacls $d /inheritance:r /grant:r ''SYSTEM:(OI)(CI)(F)'' ''Administrators:(OI)(CI)(F)'' | Out-Null"'
+  ; Generate a private 256-bit classifier token using APIs available in Windows PowerShell 5.1,
+  ; pin the trusted installer publisher when signed, and protect Guardian state under ProgramData.
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$d=$env:ProgramData+''\KidOS\Guardian''; New-Item -ItemType Directory -Force -Path $d | Out-Null; $b=New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $t=([System.BitConverter]::ToString($b)).Replace(''-'','''').ToLowerInvariant(); Set-Content -Path ($d+''\media-classifier.token'') -Value $t -NoNewline -Encoding ASCII; $s=Get-AuthenticodeSignature -LiteralPath ''$EXEPATH''; if($s.Status -eq ''Valid'' -and $s.SignerCertificate){ Set-Content -Path ($d+''\publisher-thumbprint.txt'') -Value $s.SignerCertificate.Thumbprint -NoNewline -Encoding ASCII }; icacls $d /inheritance:r /grant:r ''SYSTEM:(OI)(CI)(F)'' ''Administrators:(OI)(CI)(F)'' | Out-Null"'
   Pop $0
   Pop $1
   ${If} $0 != 0
