@@ -117,6 +117,26 @@ fn normalize_thumbprint(value: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn guardian_data_dir() -> PathBuf {
+    let base = std::env::var_os("PROGRAMDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+    base.join("KidOS").join("Guardian")
+}
+
+#[cfg(target_os = "windows")]
+fn pinned_publisher_thumbprint() -> Result<String, String> {
+    let path = guardian_data_dir().join("publisher-thumbprint.txt");
+    let value = fs::read_to_string(path)
+        .map_err(|_| "KidOS automatic updates are disabled until a trusted signed installer pins the publisher certificate.".to_string())?;
+    let pin = normalize_thumbprint(&value);
+    if pin.len() < 40 {
+        return Err("KidOS trusted publisher certificate pin is invalid.".into());
+    }
+    Ok(pin)
+}
+
+#[cfg(target_os = "windows")]
 fn validate_manifest(manifest: &UpdateManifest) -> Result<(), String> {
     if manifest.schema_version != 1 || manifest.product != "KidOS" || manifest.platform != "windows-x64" {
         return Err("KidOS rejected an incompatible update manifest.".into());
@@ -144,9 +164,13 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<(), String> {
     if !manifest.installer.authenticode.status.eq_ignore_ascii_case("valid") {
         return Err("KidOS update manifest does not describe a valid Authenticode signature.".into());
     }
-    let thumbprint = normalize_thumbprint(&manifest.installer.authenticode.signer_thumbprint);
-    if thumbprint.len() < 40 {
+    let manifest_thumbprint = normalize_thumbprint(&manifest.installer.authenticode.signer_thumbprint);
+    if manifest_thumbprint.len() < 40 {
         return Err("KidOS update manifest contains an invalid signer thumbprint.".into());
+    }
+    let pinned = pinned_publisher_thumbprint()?;
+    if manifest_thumbprint != pinned {
+        return Err("KidOS blocked an update manifest signed by an unpinned publisher certificate.".into());
     }
     if manifest.installer.authenticode.signer_subject.trim().is_empty() {
         return Err("KidOS update manifest is missing signer identity metadata.".into());
@@ -195,10 +219,7 @@ pub fn check_update(manifest_url: &str) -> Result<UpdateAvailability, String> {
 
 #[cfg(target_os = "windows")]
 fn update_root() -> Result<PathBuf, String> {
-    let base = std::env::var_os("PROGRAMDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
-    let dir = base.join("KidOS").join("Guardian").join("Updates");
+    let dir = guardian_data_dir().join("Updates");
     fs::create_dir_all(&dir)
         .map_err(|_| "KidOS could not create its protected update directory.".to_string())?;
     Ok(dir)
@@ -299,7 +320,7 @@ fn hash_file(path: &Path) -> Result<(String, u64), String> {
 fn verify_authenticode(path: &Path, expected_thumbprint: &str) -> Result<(), String> {
     let script = "$s=Get-AuthenticodeSignature -LiteralPath $args[0]; if($s.Status -ne 'Valid' -or -not $s.SignerCertificate){exit 20}; [Console]::Out.Write($s.SignerCertificate.Thumbprint)";
     let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, "--"])
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
         .arg(path)
         .output()
         .map_err(|_| "KidOS could not invoke Windows signature verification.".to_string())?;
@@ -316,6 +337,7 @@ fn verify_authenticode(path: &Path, expected_thumbprint: &str) -> Result<(), Str
 
 #[cfg(target_os = "windows")]
 fn verify_staged_installer(manifest: &UpdateManifest, installer: &Path) -> Result<(), String> {
+    validate_manifest(manifest)?;
     let canonical_root = fs::canonicalize(staging_dir()?)
         .map_err(|_| "KidOS update staging directory is unavailable.".to_string())?;
     let canonical_installer = fs::canonicalize(installer)
@@ -327,7 +349,8 @@ fn verify_staged_installer(manifest: &UpdateManifest, installer: &Path) -> Resul
     if size != manifest.installer.size_bytes || !digest.eq_ignore_ascii_case(&manifest.installer.sha256) {
         return Err("KidOS blocked a staged update that no longer matches its trusted manifest.".into());
     }
-    verify_authenticode(&canonical_installer, &manifest.installer.authenticode.signer_thumbprint)
+    let pinned = pinned_publisher_thumbprint()?;
+    verify_authenticode(&canonical_installer, &pinned)
 }
 
 #[cfg(target_os = "windows")]
