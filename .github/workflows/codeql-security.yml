@@ -1,0 +1,58 @@
+name: KidOS CodeQL Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL JavaScript / TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout KidOS
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+
+  rust-security:
+    name: Rust security lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout KidOS
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Reject unsafe Rust in KidOS workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIn --include='*.rs' -E '^[[:space:]]*unsafe[[:space:]]*(\{|fn|impl|trait)' crates apps/shell/src-tauri/src; then
+            echo "KidOS production Rust contains an unsafe block or declaration. Review explicitly before release."
+            exit 1
+          fi
+
+      - name: Security-focused Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
