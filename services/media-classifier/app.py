@@ -8,6 +8,7 @@ from typing import Literal
 
 import cv2
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import Response
 from PIL import Image
 from pydantic import BaseModel, Field
 from transformers import pipeline
@@ -176,6 +177,53 @@ def classify(request: ClassificationRequest, x_kidos_classifier_token: str | Non
         classifier_available=True,
         frames_checked=frames,
     )
+
+
+
+
+@app.post("/thumbnail")
+def thumbnail(request: ClassificationRequest, x_kidos_classifier_token: str | None = Header(default=None)):
+    require_token(x_kidos_classifier_token)
+    path = Path(request.path)
+
+    if not path.is_absolute() or not path.is_file():
+        raise HTTPException(status_code=400, detail="media path is invalid")
+
+    suffix = path.suffix.lower()
+    try:
+        if suffix in IMAGE_EXTENSIONS:
+            image = Image.open(path).convert("RGB")
+        elif suffix in VIDEO_EXTENSIONS:
+            capture = cv2.VideoCapture(str(path))
+            try:
+                if not capture.isOpened():
+                    raise ValueError("video could not be decoded")
+                ok, frame = capture.read()
+                if not ok:
+                    raise ValueError("video preview frame could not be decoded")
+                image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            finally:
+                capture.release()
+        else:
+            raise HTTPException(status_code=415, detail="unsupported media type")
+
+        image.thumbnail((320, 320))
+        from io import BytesIO
+        buffer = BytesIO()
+        image.save(buffer, format="JPEG", quality=65, optimize=True)
+        data = buffer.getvalue()
+        if len(data) > 48 * 1024:
+            image.thumbnail((220, 220))
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG", quality=50, optimize=True)
+            data = buffer.getvalue()
+        if len(data) > 48 * 1024:
+            raise ValueError("thumbnail too large")
+        return Response(content=data, media_type="image/jpeg")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"thumbnail generation failed: {type(exc).__name__}") from exc
 
 
 if __name__ == "__main__":
