@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -11,7 +12,15 @@ from PIL import Image
 from pydantic import BaseModel, Field
 from transformers import pipeline
 
-MODEL_ID = os.getenv("KIDOS_MEDIA_MODEL", "openai/clip-vit-base-patch32")
+def _default_model() -> str:
+    if getattr(sys, "frozen", False):
+        bundled = Path(sys.executable).resolve().parent / "model"
+        if bundled.is_dir():
+            return str(bundled)
+    return "openai/clip-vit-base-patch32"
+
+
+MODEL_ID = os.getenv("KIDOS_MEDIA_MODEL", _default_model())
 TOKEN = os.getenv("KIDOS_MEDIA_CLASSIFIER_TOKEN", "")
 PORT = int(os.getenv("KIDOS_MEDIA_CLASSIFIER_PORT", "8765"))
 MAX_VIDEO_FRAMES = int(os.getenv("KIDOS_MEDIA_MAX_VIDEO_FRAMES", "8"))
