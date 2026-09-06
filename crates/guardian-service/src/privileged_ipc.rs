@@ -76,7 +76,20 @@ pub struct PrivilegedRequestEnvelope {
     pub request: PrivilegedRequest,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuarantineItem {
+    pub id: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+    pub modified_seconds: u64,
+    pub category: Option<String>,
+    pub risk: Option<String>,
+    pub confidence: Option<f32>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
