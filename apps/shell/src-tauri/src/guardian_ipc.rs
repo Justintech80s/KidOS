@@ -201,3 +201,38 @@ pub fn evaluate_media(
         _ => Err("Guardian returned an unexpected media-policy response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+pub struct MediaClassification {
+    pub decision: String,
+    pub category: String,
+    pub risk: String,
+    pub confidence: f32,
+    pub high_confidence: bool,
+    pub frames_checked: u32,
+}
+
+#[cfg(target_os = "windows")]
+pub fn classify_media_file(path: String) -> Result<MediaClassification, String> {
+    match send(PrivilegedRequest::ClassifyMediaFile { path })? {
+        PrivilegedResponse::MediaClassification {
+            decision,
+            category,
+            risk,
+            confidence,
+            high_confidence,
+            frames_checked,
+        } => Ok(MediaClassification {
+            decision,
+            category,
+            risk,
+            confidence,
+            high_confidence,
+            frames_checked,
+        }),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected media classification response.".into()),
+    }
+}
