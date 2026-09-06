@@ -236,3 +236,22 @@ pub fn classify_media_file(path: String) -> Result<MediaClassification, String> 
         _ => Err("Guardian returned an unexpected media classification response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+pub fn list_quarantine(pin: String) -> Result<Vec<guardian_service::privileged_ipc::QuarantineItem>, String> {
+    match send(PrivilegedRequest::ListQuarantine { pin })? {
+        PrivilegedResponse::QuarantineItems { items } => Ok(items),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected quarantine-list response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn review_quarantine(pin: String, item_id: String, action: String) -> Result<(), String> {
+    match send(PrivilegedRequest::ReviewQuarantine { pin, item_id, action })? {
+        PrivilegedResponse::Ack { .. } => Ok(()),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected quarantine-review response.".into()),
+    }
+}
