@@ -16,6 +16,30 @@ KidOS is a child-first computing environment designed around safe browsing, pare
 
 ![KidOS Alternate Desktop Concept](https://raw.githubusercontent.com/Justintech80s/KidOS/main/BFB02781-33F0-4920-8C3F-18735168ACD4.png)
 
+## ⬇️ Experimental Downloads
+
+> ⚠️ **EXPERIMENTAL SOFTWARE — USE WITH CAUTION**
+>
+> KidOS is still in an experimental development phase. **Use it in a virtual machine (VM), a disposable Windows account, or a computer/account where you do not store important files.** Do not install the current experimental build on a primary family or work computer yet.
+>
+> The current downloadable desktop build targets **Windows 10/11 x64**. The same experimental installer is intended for both versions while Windows compatibility testing continues.
+
+| Platform | Status | Download |
+| --- | --- | --- |
+| **Windows 11 x64** | 🧪 Experimental | [Download the latest KidOS Windows installer artifact](https://github.com/Justintech80s/KidOS/actions/workflows/ci.yml) |
+| **Windows 10 x64** | 🧪 Experimental | [Download the latest KidOS Windows installer artifact](https://github.com/Justintech80s/KidOS/actions/workflows/ci.yml) |
+
+### How to download the experimental Windows installer
+
+1. Open the **KidOS Windows Release CI** link above.
+2. Open the newest successful workflow run.
+3. Scroll to **Artifacts**.
+4. Download **KidOS-Windows-10-11-x64-Experimental**.
+5. Extract the ZIP and run the included `.exe` installer only in a VM or disposable test account.
+
+**Important:** KidOS is designed to manage/lock down a child Windows session. Until the real reboot → child-login → Assigned Access tests and trusted code-signing release are complete, treat every downloadable build as test software.
+
+
 ## Core Engineering Direction
 
 - 🧒 Kid-friendly desktop and application shell
