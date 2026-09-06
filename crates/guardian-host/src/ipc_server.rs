@@ -69,6 +69,39 @@ fn guardian_data_dir() -> Result<PathBuf, String> {
     Ok(base.join("KidOS").join("Guardian"))
 }
 
+
+#[cfg(target_os = "windows")]
+fn recovery_marker_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join("recovery-required.flag"))
+}
+
+#[cfg(target_os = "windows")]
+fn lockdown_backup_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join("last-lockdown-profile.json"))
+}
+
+#[cfg(target_os = "windows")]
+fn persist_lockdown_profile(profile: &guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "Guardian could not create recovery storage.".to_string())?;
+    let bytes = serde_json::to_vec_pretty(profile).map_err(|_| "Guardian could not encode recovery profile.".to_string())?;
+    fs::write(lockdown_backup_path()?, bytes).map_err(|_| "Guardian could not save recovery profile.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn mark_recovery_required(reason: &str) {
+    if let Ok(path) = recovery_marker_path() {
+        let _ = fs::write(path, reason.as_bytes());
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn clear_recovery_marker() {
+    if let Ok(path) = recovery_marker_path() {
+        let _ = fs::remove_file(path);
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn pin_marker_path() -> Result<PathBuf, String> {
     Ok(guardian_data_dir()?.join("parent-pin.initialized"))
@@ -94,8 +127,19 @@ fn mark_pin_initialized() -> Result<(), String> {
 #[cfg(target_os = "windows")]
 fn load_parent_policy() -> ParentPolicyConfig {
     let Ok(path) = policy_path() else { return ParentPolicyConfig::default(); };
-    let Ok(contents) = fs::read_to_string(path) else { return ParentPolicyConfig::default(); };
-    serde_json::from_str(&contents).unwrap_or_default()
+    let Ok(contents) = fs::read_to_string(&path) else { return ParentPolicyConfig::default(); };
+    match serde_json::from_str(&contents) {
+        Ok(policy) => policy,
+        Err(_) => {
+            let corrupt = path.with_extension(format!("corrupt-{}.json", now_seconds()));
+            let _ = fs::rename(&path, corrupt);
+            let _ = fs::write(
+                guardian_data_dir().unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian")).join("recovery-required.flag"),
+                b"parent-policy-corrupt",
+            );
+            ParentPolicyConfig::default()
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -889,17 +933,27 @@ fn handle_request(
             }
         }
         PrivilegedRequest::ApplyLockdown { profile } => {
+            if let Err(error) = persist_lockdown_profile(&profile) {
+                return error_response("recovery_backup_failed", error);
+            }
             let profile = match profile_from_ipc(profile) {
                 Ok(profile) => profile,
                 Err(error) => return error_response("invalid_profile", error),
             };
 
             match lockdown_service.prepare_and_apply(&profile) {
-                Ok(()) => PrivilegedResponse::Status { state: "locked".into(), reason: None },
-                Err(error) => error_response(
-                    "apply_failed",
-                    format!("Guardian could not apply Windows Assigned Access: {error:?}"),
-                ),
+                Ok(()) => {
+                    clear_recovery_marker();
+                    PrivilegedResponse::Status { state: "locked".into(), reason: None }
+                }
+                Err(error) => {
+                    mark_recovery_required("assigned-access-apply-failed");
+                    let _ = lockdown_service.remove_lockdown(true);
+                    error_response(
+                        "apply_failed_recovered",
+                        format!("Guardian could not apply Windows Assigned Access and removed the partial lockdown: {error:?}"),
+                    )
+                },
             }
         }
         PrivilegedRequest::ParentUnlock { pin, duration_minutes } => {
