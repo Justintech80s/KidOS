@@ -52,7 +52,9 @@ describe('KidOS protected child flows', () => {
     fireEvent.change(screen.getByLabelText('Ask KidOS'), {
       target: { value: 'make a story about space' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    const createButton = screen.getAllByRole('button', { name: 'Create' }).find((button) => button.getAttribute('type') === 'submit');
+    if (!createButton) throw new Error('Creation submit button not found');
+    fireEvent.click(createButton);
 
     expect(await screen.findByRole('heading', { name: 'Space Story' })).toBeTruthy();
     expect(screen.getByText('Story workspace')).toBeTruthy();
@@ -68,10 +70,10 @@ describe('KidOS protected child flows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
 
     expect(await screen.findByText('Parent approval required')).toBeTruthy();
-    expect(screen.queryByText('Opening https://unknown.example')).toBeNull();
+    expect(screen.queryByText(/Approved by KidOS:/)).toBeNull();
   });
 
-  it('shows the enforced Google SafeSearch URL before an allowed load', async () => {
+  it('shows the enforced Google SafeSearch URL after an allowed navigation check', async () => {
     render(<ChildHome api={allowApi} />);
     fireEvent.click(screen.getByRole('button', { name: /^Search$/ }));
 
@@ -81,7 +83,7 @@ describe('KidOS protected child flows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check site' }));
 
     const status = await screen.findByRole('status');
-    expect(status.textContent).toContain('Opening https://www.google.com/search?');
+    expect(status.textContent).toContain('Approved by KidOS: https://www.google.com/search?');
     expect(status.textContent).toContain('q=planets');
     expect(status.textContent).toContain('safe=active');
   });
