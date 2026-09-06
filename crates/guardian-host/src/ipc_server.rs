@@ -21,6 +21,8 @@ use std::{
 #[cfg(target_os = "windows")]
 use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, WindowsSecretStore};
 #[cfg(target_os = "windows")]
+use base64::Engine;
+#[cfg(target_os = "windows")]
 use policy_core::{
     evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
     DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, PolicyDecision,
@@ -371,6 +373,97 @@ fn evaluate_classifier_response(
 }
 
 
+
+#[cfg(target_os = "windows")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+struct QuarantineAuditRecord {
+    item_id: String,
+    file_name: String,
+    event: String,
+    category: Option<String>,
+    risk: Option<String>,
+    confidence: Option<f32>,
+    decision: Option<String>,
+    reason: Option<String>,
+    timestamp_seconds: u64,
+}
+
+#[cfg(target_os = "windows")]
+fn quarantine_audit_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join("quarantine-audit.jsonl"))
+}
+
+#[cfg(target_os = "windows")]
+fn append_quarantine_audit(record: &QuarantineAuditRecord) -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "KidOS could not create Guardian audit storage.".to_string())?;
+    let line = serde_json::to_string(record)
+        .map_err(|_| "KidOS could not encode quarantine audit entry.".to_string())?;
+    use std::io::Write as _;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(quarantine_audit_path()?)
+        .map_err(|_| "KidOS could not open quarantine audit log.".to_string())?;
+    writeln!(file, "{line}")
+        .map_err(|_| "KidOS could not append quarantine audit entry.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn latest_quarantine_audit(item_id: &str) -> Option<QuarantineAuditRecord> {
+    let contents = fs::read_to_string(quarantine_audit_path().ok()?).ok()?;
+    contents
+        .lines()
+        .filter_map(|line| serde_json::from_str::<QuarantineAuditRecord>(line).ok())
+        .filter(|record| record.item_id == item_id)
+        .last()
+}
+
+#[cfg(target_os = "windows")]
+fn classifier_thumbnail(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    let token = match std::env::var("KIDOS_MEDIA_CLASSIFIER_TOKEN") {
+        Ok(value) => value,
+        Err(_) => {
+            let path = std::env::var("KIDOS_MEDIA_TOKEN_FILE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian\media-classifier.token"));
+            fs::read_to_string(path)
+                .map_err(|_| "KidOS media classifier token is not configured.".to_string())?
+                .trim()
+                .to_string()
+        }
+    };
+    if token.len() < 32 {
+        return Err("KidOS media classifier token is invalid.".into());
+    }
+
+    let endpoint = std::env::var("KIDOS_MEDIA_CLASSIFIER_THUMBNAIL_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8765/thumbnail".into());
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|_| "KidOS could not initialize its thumbnail client.".to_string())?;
+
+    let response = client
+        .post(endpoint)
+        .header("x-kidos-classifier-token", token)
+        .json(&ClassifierRequest { path: &path.to_string_lossy() })
+        .send()
+        .map_err(|_| "KidOS local media thumbnail service is unavailable.".to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("KidOS thumbnail service returned HTTP {}.", response.status()));
+    }
+
+    let bytes = response.bytes()
+        .map_err(|_| "KidOS could not read the media thumbnail.".to_string())?;
+    if bytes.len() > 48 * 1024 {
+        return Err("KidOS refused an oversized media thumbnail.".into());
+    }
+    Ok(bytes.to_vec())
+}
+
 #[cfg(target_os = "windows")]
 fn quarantine_pending_dir() -> PathBuf {
     PathBuf::from(r"C:\ProgramData\KidOS\Quarantine\Pending")
@@ -422,11 +515,16 @@ fn list_quarantine_items() -> Result<Vec<guardian_service::privileged_ipc::Quara
             .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|value| value.as_secs())
             .unwrap_or(0);
+        let audit = latest_quarantine_audit(&id);
         items.push(guardian_service::privileged_ipc::QuarantineItem {
             id,
             file_name,
             size_bytes: metadata.len(),
             modified_seconds,
+            category: audit.as_ref().and_then(|record| record.category.clone()),
+            risk: audit.as_ref().and_then(|record| record.risk.clone()),
+            confidence: audit.as_ref().and_then(|record| record.confidence),
+            reason: audit.as_ref().and_then(|record| record.reason.clone()),
         });
     }
     items.sort_by(|a, b| b.modified_seconds.cmp(&a.modified_seconds));
@@ -448,7 +546,7 @@ fn review_quarantine_item(item_id: &str, action: &str) -> Result<(), String> {
         return Err("KidOS rejected a quarantine path outside its protected folder.".into());
     }
 
-    match action {
+    let result = match action {
         "approve" => {
             let target_dir = quarantine_approved_dir();
             fs::create_dir_all(&target_dir).map_err(|_| "KidOS could not create the approved-media folder.".to_string())?;
@@ -464,7 +562,24 @@ fn review_quarantine_item(item_id: &str, action: &str) -> Result<(), String> {
                 .map_err(|_| "KidOS could not retain this quarantine item as blocked.".to_string())
         }
         _ => Err("KidOS rejected an unknown quarantine review action.".into()),
+    };
+
+    if result.is_ok() {
+        let existing = latest_quarantine_audit(item_id).unwrap_or_default();
+        let _ = append_quarantine_audit(&QuarantineAuditRecord {
+            item_id: item_id.to_string(),
+            file_name: existing.file_name,
+            event: format!("parent_{action}"),
+            category: existing.category,
+            risk: existing.risk,
+            confidence: existing.confidence,
+            decision: existing.decision,
+            reason: Some(format!("Parent selected '{action}' in quarantine review.")),
+            timestamp_seconds: now_seconds(),
+        });
     }
+
+    result
 }
 
 #[cfg(target_os = "windows")]
@@ -689,6 +804,28 @@ fn handle_request(
                     parent_policy.current_parent_policy(),
                 );
 
+            let item_id = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(&file_name)
+                .to_string();
+            let reason = match decision {
+                "allow" => "AI classifier and Guardian policy approved this media.",
+                "block" => "AI classifier and Guardian policy marked this media unsafe.",
+                _ => "Media requires parent review because the result was uncertain or policy requires approval.",
+            }.to_string();
+            let _ = append_quarantine_audit(&QuarantineAuditRecord {
+                item_id,
+                file_name: file_name.clone(),
+                event: "classified".into(),
+                category: Some(category.clone()),
+                risk: Some(risk.clone()),
+                confidence: Some(confidence),
+                decision: Some(decision.into()),
+                reason: Some(reason),
+                timestamp_seconds: now_seconds(),
+            });
+
             PrivilegedResponse::MediaClassification {
                 decision: decision.into(),
                 category,
@@ -704,6 +841,37 @@ fn handle_request(
                     Ok(items) => PrivilegedResponse::QuarantineItems { items },
                     Err(message) => error_response("quarantine_list_failed", &message),
                 },
+                Ok(ParentAuthorizationResult::Locked) => error_response("parent_pin_locked", "Parent PIN verification is temporarily locked."),
+                Ok(ParentAuthorizationResult::Denied) => error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Err(_) => error_response("parent_pin_error", "KidOS could not verify the parent PIN."),
+            }
+        }
+        PrivilegedRequest::PreviewQuarantine { pin, item_id } => {
+            match parent_authorization.verify(&pin, now_seconds()) {
+                Ok(ParentAuthorizationResult::Authorized) => {
+                    if !safe_quarantine_id(&item_id) {
+                        return error_response("invalid_quarantine_item", "KidOS rejected an invalid quarantine item identifier.");
+                    }
+                    let source = quarantine_pending_dir().join(&item_id);
+                    let canonical_parent = match fs::canonicalize(quarantine_pending_dir()) {
+                        Ok(value) => value,
+                        Err(_) => return error_response("quarantine_preview_failed", "KidOS quarantine directory is unavailable."),
+                    };
+                    let canonical_source = match fs::canonicalize(&source) {
+                        Ok(value) => value,
+                        Err(_) => return error_response("quarantine_preview_failed", "The quarantine item no longer exists."),
+                    };
+                    if !canonical_source.starts_with(&canonical_parent) || !canonical_source.is_file() {
+                        return error_response("quarantine_preview_failed", "KidOS rejected a quarantine preview outside its protected folder.");
+                    }
+                    match classifier_thumbnail(&canonical_source) {
+                        Ok(bytes) => PrivilegedResponse::QuarantinePreview {
+                            mime_type: "image/jpeg".into(),
+                            data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                        },
+                        Err(message) => error_response("quarantine_preview_failed", &message),
+                    }
+                }
                 Ok(ParentAuthorizationResult::Locked) => error_response("parent_pin_locked", "Parent PIN verification is temporarily locked."),
                 Ok(ParentAuthorizationResult::Denied) => error_response("parent_pin_denied", "Parent PIN was not accepted."),
                 Err(_) => error_response("parent_pin_error", "KidOS could not verify the parent PIN."),
