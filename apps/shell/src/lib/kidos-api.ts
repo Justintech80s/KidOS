@@ -27,6 +27,17 @@ export interface QuarantinePreview {
 
 export type QuarantineAction = 'approve' | 'delete' | 'keep_blocked';
 
+export interface RecoveryStatus {
+  guardianHealthy: boolean;
+  classifierHealthy: boolean;
+  recoveryRequired: boolean;
+  recoveryReason?: string;
+  policyValid: boolean;
+  lockdownState: string;
+}
+
+export type RecoveryAction = 'reset_policy_defaults' | 'remove_lockdown' | 'clear_recovery_marker';
+
 export interface ParentVerification {
   authorized: boolean;
   locked: boolean;
@@ -48,6 +59,8 @@ export interface KidOSApi {
   listQuarantineMedia?(pin: string): Promise<QuarantineItem[]>;
   previewQuarantineMedia?(pin: string, itemId: string): Promise<QuarantinePreview>;
   reviewQuarantineMedia?(pin: string, itemId: string, action: QuarantineAction): Promise<void>;
+  getRecoveryStatus?(): Promise<RecoveryStatus>;
+  runParentRecovery?(pin: string, action: RecoveryAction): Promise<string>;
 }
 
 export const tauriKidOSApi: KidOSApi = {
@@ -66,4 +79,6 @@ export const tauriKidOSApi: KidOSApi = {
   listQuarantineMedia(pin) { return invoke<QuarantineItem[]>('list_quarantine_media', { pin }); },
   previewQuarantineMedia(pin, itemId) { return invoke<QuarantinePreview>('preview_quarantine_media', { pin, itemId }); },
   reviewQuarantineMedia(pin, itemId, action) { return invoke<void>('review_quarantine_media', { pin, itemId, action }); },
+  getRecoveryStatus() { return invoke<RecoveryStatus>('get_recovery_status'); },
+  runParentRecovery(pin, action) { return invoke<string>('run_parent_recovery', { pin, action }); },
 };
