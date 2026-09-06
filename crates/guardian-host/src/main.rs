@@ -1,6 +1,8 @@
 #[cfg(target_os = "windows")]
 mod ipc_server;
 #[cfg(target_os = "windows")]
+mod updater;
+#[cfg(target_os = "windows")]
 mod windows_host {
     use guardian_service::windows_lockdown::{
         LockdownInspection, WindowsAssignedAccessAdapter, WindowsLockdownAdapter,
