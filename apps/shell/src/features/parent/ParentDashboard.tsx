@@ -3,13 +3,14 @@ import type { DownloadMode, LockdownStatus, ParentPolicyConfig, SocialAccessMode
 import type { KidOSApi } from '../../lib/kidos-api';
 import LockdownSettings from './LockdownSettings';
 import SafetySummary, { type SafetySummaryData } from './SafetySummary';
+import QuarantineReview from './QuarantineReview';
 
 type ParentDashboardProps = {
   authorized: boolean;
   savePolicy: (pin: string, policy: ParentPolicyConfig) => Promise<void>;
   safetySummary?: SafetySummaryData;
   clearSafetyEvents?: () => Promise<void>;
-  lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown'>;
+  lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown' | 'listQuarantineMedia' | 'reviewQuarantineMedia'>;
   initialLockdownStatus?: LockdownStatus;
 };
 
@@ -62,6 +63,7 @@ export default function ParentDashboard({ authorized, savePolicy, safetySummary,
     </form>
     {status?<p role="status">{status}</p>:null}
     {lockdownApi?<LockdownSettings authorized={authorized} api={lockdownApi} initialStatus={initialLockdownStatus}/>:null}
+    {lockdownApi?<QuarantineReview authorized={authorized} api={lockdownApi}/>:null}
     {safetySummary&&clearSafetyEvents?<SafetySummary authorized={authorized} summary={safetySummary} clearEvents={clearSafetyEvents}/>:null}
   </section>;
 }
