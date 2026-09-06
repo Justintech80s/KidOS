@@ -641,13 +641,6 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
           <label className="toggle-row"><input type="checkbox" checked={reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} /> Reduce motion</label>
           <div className="fact-card">These settings are saved for this KidOS session.</div>
         </div>
-      ) : activeTool === 'Guardian' ? (
-        <div className="learning-tool">
-          <div className="learning-score">🔒 Guardian Protected</div>
-          <h2>Parent controls are locked</h2>
-          <p>Children can see that Guardian is active, but changing safety rules requires parent authorization.</p>
-          <div className="fact-card">🛡 Safe Mode: ON • Web policy active • Downloads protected • Parent PIN required for changes.</div>
-        </div>
       ) : activeTool === 'Math Lab' ? (
         <div className="learning-tool">
           <div className="learning-score">⭐ Quick Challenge</div>
@@ -670,60 +663,6 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
           <h2>The Curious Robot</h2>
           <p>A small robot looked at the night sky and wondered why the stars seemed to sparkle. It decided to learn one new thing every day.</p>
           <div className="fact-card">Question: What made the robot curious?</div>
-        </div>
-      ) : activeTool === 'Puzzle Park' || activeTool === 'Racing' || activeTool === 'Strategy' ? (
-        <div className="learning-tool">
-          <div className="learning-score">🎮 Safe Game</div>
-          <h2>{activeTool}</h2>
-          <p>Practice focus and problem solving in this KidOS-approved activity.</p>
-          <button type="button" className="primary-button" onClick={() => setGameScore((score) => score + 10)}>
-            Play round
-          </button>
-          <div className="fact-card">⭐ Score: {gameScore}</div>
-        </div>
-      ) : activeTool === 'Explore' || activeTool === 'Animals' || activeTool === 'Space' ? (
-        <div className="learning-tool">
-          <div className="learning-score">▶ Approved Watch</div>
-          <h2>{activeTool}</h2>
-          <p>Only media that passes the active KidOS profile and media-safety policy appears in this library.</p>
-          <div className="safe-media-placeholder">🛡️ Media checked by KidOS<br/><small>Approved educational content appears here.</small></div>
-        </div>
-      ) : activeTool === 'Files' ? (
-        <div className="learning-tool">
-          <div className="learning-score">📁 Files</div>
-          <h2>My KidOS Files</h2>
-          <div className="file-grid">
-            <button type="button">📄 Homework</button><button type="button">🎨 My Art</button><button type="button">📚 Stories</button>
-          </div>
-          <p>KidOS exposes only folders and files permitted for this child profile.</p>
-        </div>
-      ) : activeTool === 'Camera' ? (
-        <div className="learning-tool">
-          <div className="learning-score">📷 Camera</div>
-          <h2>Protected Camera</h2>
-          <div className="camera-preview">📷<span>Camera permission requires the active KidOS policy.</span></div>
-          <button type="button" className="primary-button">Request camera access</button>
-        </div>
-      ) : activeTool === 'Messages' ? (
-        <div className="learning-tool">
-          <div className="learning-score">✉ Approved Contacts</div>
-          <h2>Messages</h2>
-          <div className="message-list"><div>👩 <strong>Mom</strong><span>Have a great day! ❤️</span></div><div>👨 <strong>Dad</strong><span>Homework first, then game time.</span></div></div>
-          <p>Only guardian-approved contacts can appear here.</p>
-        </div>
-      ) : activeTool === 'Screen Time' ? (
-        <div className="learning-tool">
-          <div className="learning-score">⏱ Wellbeing</div>
-          <h2>Today’s Screen Time</h2>
-          <div className="screen-time-ring">1h 12m<small>of 2h goal</small></div>
-          <div className="fact-card">Next healthy break in 18 minutes.</div>
-        </div>
-      ) : activeTool === 'Accessibility' ? (
-        <div className="learning-tool">
-          <div className="learning-score">♿ Accessibility</div>
-          <h2>Make KidOS comfortable for you</h2>
-          <label className="setting-toggle"><input type="checkbox" checked={largeText} onChange={(e) => setLargeText(e.target.checked)} /> Larger text</label>
-          <label className="setting-toggle"><input type="checkbox" checked={reducedMotion} onChange={(e) => setReducedMotion(e.target.checked)} /> Reduce motion</label>
         </div>
       ) : activeTool === 'Guardian' ? (
         <div className="learning-tool">
