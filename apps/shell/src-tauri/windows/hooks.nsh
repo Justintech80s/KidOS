@@ -84,11 +84,23 @@
     Abort
   ${EndIf}
 
+  SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
+  File /oname=kidos-recovery.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\kidos-recovery.ps1"
+  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
+  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Guardian Recovery" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1$\"" /F'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not install its recovery health check. Installation will stop."
+    Abort
+  ${EndIf}
+
   DetailPrint "KidOS Guardian and local media classifier are installed and running."
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   DetailPrint "Stopping KidOS protection services..."
+  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
   nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSMediaClassifier'
   nsExec::ExecToLog '"$SYSDIR\sc.exe" delete KidOSMediaClassifier'
   nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSGuardian'
@@ -100,5 +112,6 @@
   Delete "$PROGRAMDATA\KidOS\Guardian\media-classifier.token"
   RMDir /r "$PROGRAMFILES64\KidOS\Guardian"
   RMDir /r "$PROGRAMFILES64\KidOS\MediaClassifier"
+  RMDir /r "$PROGRAMFILES64\KidOS\Recovery"
   RMDir "$PROGRAMFILES64\KidOS"
 !macroend
