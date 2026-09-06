@@ -24,6 +24,8 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Verify packaging metadata
         run: node tests/packaging/tauri-config.test.mjs
+      - name: Verify production hardening invariants
+        run: node tests/security/release-hardening.test.mjs
       - name: Run JavaScript tests
         run: pnpm -r test --run
       - name: Build JavaScript workspaces
