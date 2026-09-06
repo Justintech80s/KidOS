@@ -326,23 +326,82 @@ fn quarantine_destination(file_name: &str) -> Result<PathBuf, String> {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .ok_or_else(|| "KidOS could not resolve its local safety folder.".to_string())?;
-    let directory = base.join("KidOS").join("Quarantine");
+    let directory = base.join("KidOS").join("Quarantine").join("Pending");
     fs::create_dir_all(&directory)
         .map_err(|_| "KidOS could not create its media quarantine folder.".to_string())?;
-    Ok(directory.join(format!("{}.quarantine", sanitize_download_file_name(file_name))))
+
+    let safe_name = sanitize_download_file_name(file_name);
+    let unique = format!(
+        "{}-{}-{}",
+        now_seconds(),
+        SAFE_BROWSER_COUNTER.fetch_add(1, Ordering::Relaxed),
+        safe_name
+    );
+    Ok(directory.join(unique))
 }
 
 #[cfg(target_os = "windows")]
-fn guardian_media_gate(file_name: &str) -> Result<String, String> {
-    // Until a real image/video classifier supplies a category and confidence,
-    // media is deliberately classified as uncertain and fails closed to parent review.
-    guardian_ipc::evaluate_media(
-        file_name.to_string(),
-        "uncertain".into(),
-        "high".into(),
-        false,
-        false,
-    )
+fn finalize_media_download(path: &std::path::Path) -> Result<(), String> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "KidOS could not determine the quarantined media filename.".to_string())?;
+
+    let original_name = file_name
+        .splitn(3, '-')
+        .nth(2)
+        .unwrap_or(file_name);
+
+    let classification = guardian_ipc::classify_media_file(
+        path.to_string_lossy().to_string(),
+    )?;
+
+    match classification.decision.as_str() {
+        "allow" => {
+            let destination = safe_download_destination(original_name)?;
+            if destination.exists() {
+                let stem = destination.file_stem().and_then(|value| value.to_str()).unwrap_or("media");
+                let ext = destination.extension().and_then(|value| value.to_str()).unwrap_or("");
+                let replacement = if ext.is_empty() {
+                    format!("{}-{}", stem, now_seconds())
+                } else {
+                    format!("{}-{}.{}", stem, now_seconds(), ext)
+                };
+                fs::rename(path, destination.with_file_name(replacement))
+                    .map_err(|_| "KidOS could not release approved media from quarantine.".to_string())?;
+            } else {
+                fs::rename(path, destination)
+                    .map_err(|_| "KidOS could not release approved media from quarantine.".to_string())?;
+            }
+            eprintln!(
+                "KidOS media approved: category={} risk={} confidence={:.3} frames={}",
+                classification.category,
+                classification.risk,
+                classification.confidence,
+                classification.frames_checked
+            );
+            Ok(())
+        }
+        "block" => {
+            eprintln!(
+                "KidOS media blocked and retained in quarantine: category={} risk={} confidence={:.3}",
+                classification.category,
+                classification.risk,
+                classification.confidence
+            );
+            Err("KidOS Guardian blocked unsafe media.".into())
+        }
+        "require_parent" => {
+            eprintln!(
+                "KidOS media retained for parent review: category={} risk={} confidence={:.3}",
+                classification.category,
+                classification.risk,
+                classification.confidence
+            );
+            Err("KidOS retained this media in quarantine for parent review.".into())
+        }
+        _ => Err("KidOS Guardian returned an invalid media classification decision.".into()),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -376,20 +435,7 @@ fn browser_download_allowed(
     )?;
 
     match decision.as_str() {
-        "allow" if is_media_download(&file_name) => {
-            match guardian_media_gate(&file_name)?.as_str() {
-                "allow" => safe_download_destination(&file_name),
-                "block" => {
-                    let _ = quarantine_destination(&file_name)?;
-                    Err("KidOS Guardian blocked unsafe media.".into())
-                }
-                "require_parent" => {
-                    let _ = quarantine_destination(&file_name)?;
-                    Err("KidOS quarantined this media until a parent reviews it.".into())
-                }
-                _ => Err("KidOS Guardian returned an invalid media decision.".into()),
-            }
-        }
+        "allow" if is_media_download(&file_name) => quarantine_destination(&file_name),
         "allow" => safe_download_destination(&file_name),
         "require_parent" => Err("Parent approval is required for this download.".into()),
         "block" => Err("KidOS Guardian blocked this download.".into()),
@@ -439,10 +485,24 @@ async fn open_protected_browser(
                 }
             }
             tauri::webview::DownloadEvent::Finished { url, path, success } => {
-                if success {
-                    eprintln!("KidOS protected download completed: {} -> {:?}", url, path);
-                } else {
+                if !success {
                     eprintln!("KidOS protected download failed: {}", url);
+                    return true;
+                }
+
+                let file_name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+
+                if path.to_string_lossy().contains("\\KidOS\\Quarantine\\Pending\\")
+                    && is_media_download(file_name)
+                {
+                    if let Err(reason) = finalize_media_download(path.as_path()) {
+                        eprintln!("KidOS media quarantine decision: {}", reason);
+                    }
+                } else {
+                    eprintln!("KidOS protected download completed: {} -> {:?}", url, path);
                 }
                 true
             }
