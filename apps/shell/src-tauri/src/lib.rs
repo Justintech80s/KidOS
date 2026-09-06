@@ -608,6 +608,11 @@ async fn open_protected_browser(
                     return true;
                 }
 
+                let Some(path) = path.as_ref() else {
+                    eprintln!("KidOS protected download completed without a destination path: {}", url);
+                    return true;
+                };
+
                 let file_name = path
                     .file_name()
                     .and_then(|value| value.to_str())
@@ -942,7 +947,7 @@ fn request_parent_maintenance_unlock(
     duration_minutes: u64,
 ) -> Result<ParentUnlockGrantDto, String> {
     let now = now_seconds();
-    let (_state, reason) = guardian_ipc::parent_unlock(pin, duration_minutes)?;
+    let (_state, _reason) = guardian_ipc::parent_unlock(pin, duration_minutes)?;
     let expires_at = now.saturating_add(duration_minutes.saturating_mul(60));
     Ok(ParentUnlockGrantDto {
         granted_at: iso_from_unix(now),
