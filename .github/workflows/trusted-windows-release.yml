@@ -1,0 +1,132 @@
+name: KidOS Trusted Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  trusted-windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 150
+
+    env:
+      KIDOS_WINDOWS_PFX_BASE64: ${{ secrets.KIDOS_WINDOWS_PFX_BASE64 }}
+      KIDOS_WINDOWS_PFX_PASSWORD: ${{ secrets.KIDOS_WINDOWS_PFX_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve and validate release version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid KidOS release version: $version" }
+          $config = Get-Content apps/shell/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $cargo = Get-Content apps/shell/src-tauri/Cargo.toml -Raw
+          if ($config.version -ne $version) { throw "tauri.conf.json version does not match release version." }
+          if ($cargo -notmatch ('version\s*=\s*"' + [Regex]::Escape($version) + '"')) { throw "kidos-shell Cargo.toml version does not match release version." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Require trusted signing credentials
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:KIDOS_WINDOWS_PFX_BASE64)) { throw "Repository secret KIDOS_WINDOWS_PFX_BASE64 is required." }
+          if ([string]::IsNullOrWhiteSpace($env:KIDOS_WINDOWS_PFX_PASSWORD)) { throw "Repository secret KIDOS_WINDOWS_PFX_PASSWORD is required." }
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run release verification
+        shell: pwsh
+        run: |
+          node tests/packaging/tauri-config.test.mjs
+          pnpm -r test --run
+          pnpm -r build
+          cargo test --workspace
+          cargo check --workspace
+
+      - name: Package local AI classifier and model
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "services/media-classifier[packaging]"
+          python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openai/clip-vit-base-patch32', local_dir='services/media-classifier/dist/model')"
+          Push-Location services/media-classifier
+          pyinstaller --clean --noconfirm kidos-media-classifier.spec
+          Pop-Location
+
+      - name: Build privileged Guardian service
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Sign Guardian and classifier before installer packaging
+        shell: pwsh
+        run: |
+          ./scripts/windows/sign-release-artifacts.ps1 -Files @("target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier.exe") -PfxBase64 $env:KIDOS_WINDOWS_PFX_BASE64 -PfxPassword $env:KIDOS_WINDOWS_PFX_PASSWORD
+
+      - name: Enable Tauri Authenticode signing for this release
+        shell: pwsh
+        run: |
+          $signer = (Resolve-Path scripts/windows/tauri-sign.ps1).Path
+          $releaseConfig = @{ bundle = @{ windows = @{ signCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$signer`" %1" } } }
+          $releaseConfig | ConvertTo-Json -Depth 8 | Set-Content apps/shell/src-tauri/tauri.windows.conf.json -Encoding UTF8
+
+      - name: Build signed KidOS installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          ./scripts/windows/verify-release-signatures.ps1 -Files @("target/release/kidos-shell.exe","target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier.exe",$installer)
+
+      - name: Generate integrity and update manifests
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $files = @((Get-Item $installer),(Get-Item target/release/kidos-shell.exe),(Get-Item target/release/kidos-guardian-host.exe),(Get-Item services/media-classifier/dist/kidos-media-classifier.exe))
+          $manifest = foreach ($file in $files) { $hash = Get-FileHash $file.FullName -Algorithm SHA256; "$($hash.Hash.ToLowerInvariant())  $($file.Name)" }
+          $manifest | Set-Content target/release/KidOS-SHA256SUMS.txt -Encoding ASCII
+          ./scripts/windows/new-update-manifest.ps1 -Version $version -InstallerPath $installer -OutputPath target/release/KidOS-update-manifest.json
+
+      - name: Upload trusted release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Trusted-Windows-${{ steps.version.outputs.version }}
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/KidOS-SHA256SUMS.txt
+            target/release/KidOS-update-manifest.json
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          gh release create $tag $installer target/release/KidOS-SHA256SUMS.txt target/release/KidOS-update-manifest.json --title "KidOS $tag" --generate-notes
