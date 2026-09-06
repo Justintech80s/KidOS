@@ -14,7 +14,9 @@ describe('KidOS household creation flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enter child mode' }));
 
     fireEvent.change(screen.getByLabelText('Ask KidOS'), { target: { value: 'write a space story' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    const createButton = screen.getAllByRole('button', { name: 'Create' }).find((button) => button.getAttribute('type') === 'submit');
+    if (!createButton) throw new Error('Creation submit button not found');
+    fireEvent.click(createButton);
 
     expect(await screen.findByText('Story workspace')).toBeTruthy();
   });
