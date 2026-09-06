@@ -255,3 +255,13 @@ pub fn review_quarantine(pin: String, item_id: String, action: String) -> Result
         _ => Err("Guardian returned an unexpected quarantine-review response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+pub fn preview_quarantine(pin: String, item_id: String) -> Result<(String, String), String> {
+    match send(PrivilegedRequest::PreviewQuarantine { pin, item_id })? {
+        PrivilegedResponse::QuarantinePreview { mime_type, data_base64 } => Ok((mime_type, data_base64)),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected quarantine-preview response.".into()),
+    }
+}
