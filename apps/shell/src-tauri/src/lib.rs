@@ -450,6 +450,10 @@ struct QuarantineItemDto {
     file_name: String,
     size_bytes: u64,
     modified_seconds: u64,
+    category: Option<String>,
+    risk: Option<String>,
+    confidence: Option<f32>,
+    reason: Option<String>,
 }
 
 #[cfg(target_os = "windows")]
@@ -461,6 +465,10 @@ fn list_quarantine_media(pin: String) -> Result<Vec<QuarantineItemDto>, String> 
             file_name: item.file_name,
             size_bytes: item.size_bytes,
             modified_seconds: item.modified_seconds,
+            category: item.category,
+            risk: item.risk,
+            confidence: item.confidence,
+            reason: item.reason,
         }).collect()
     })
 }
@@ -469,6 +477,26 @@ fn list_quarantine_media(pin: String) -> Result<Vec<QuarantineItemDto>, String> 
 #[tauri::command]
 fn list_quarantine_media(_pin: String) -> Result<Vec<QuarantineItemDto>, String> {
     Err("KidOS quarantine review is currently available in the Windows build.".into())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QuarantinePreviewDto {
+    mime_type: String,
+    data_base64: String,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn preview_quarantine_media(pin: String, item_id: String) -> Result<QuarantinePreviewDto, String> {
+    let (mime_type, data_base64) = guardian_ipc::preview_quarantine(pin, item_id)?;
+    Ok(QuarantinePreviewDto { mime_type, data_base64 })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn preview_quarantine_media(_pin: String, _item_id: String) -> Result<QuarantinePreviewDto, String> {
+    Err("KidOS quarantine preview is currently available in the Windows build.".into())
 }
 
 #[cfg(target_os = "windows")]
@@ -910,6 +938,7 @@ pub fn run() {
             evaluate_download_with_parent_policy,
             open_protected_browser,
             list_quarantine_media,
+            preview_quarantine_media,
             review_quarantine_media,
             plan_workspace,
             evaluate_navigation,
