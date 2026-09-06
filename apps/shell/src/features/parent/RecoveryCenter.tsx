@@ -40,13 +40,18 @@ export default function RecoveryCenter({ authorized, api }: Props) {
   if (!authorized || !api.getRecoveryStatus || !api.runParentRecovery) return null;
 
   async function recover(action: RecoveryAction) {
+    const runRecovery = api.runParentRecovery;
+    if (!runRecovery) {
+      setMessage('Recovery controls are unavailable in this build.');
+      return;
+    }
     if (!pin.trim()) {
       setMessage('Enter the parent PIN before using recovery controls.');
       return;
     }
     setBusy(true);
     try {
-      const result = await api.runParentRecovery(pin.trim(), action);
+      const result = await runRecovery(pin.trim(), action);
       setPin('');
       setMessage(result);
       await refresh();
