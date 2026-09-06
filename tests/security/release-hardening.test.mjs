@@ -43,6 +43,15 @@ assert.match(updater, /candidate <= current/, 'Updater must reject rollback and 
 assert.match(updater, /Guardian.*Updates|guardian_data_dir\(\).*Updates/s, 'Updater staging must remain under protected Guardian storage.');
 assert.match(updater, /verify_staged_installer/, 'A staged update must be reverified before execution.');
 
+const updaterCommands = [...updater.matchAll(/Command::new\(([^\n]+?)\)/g)].map((match) => match[1].trim());
+assert.deepEqual(
+  updaterCommands,
+  ['"powershell.exe"', '&installer'],
+  'The privileged updater may invoke only Windows signature verification and its already-verified staged installer.',
+);
+assert.match(updater, /Command::new\("powershell\.exe"\)[\s\S]*Get-AuthenticodeSignature/, 'The PowerShell exception must exist only for Authenticode verification.');
+assert.match(updater, /verify_staged_installer\(&manifest, &installer\)\?[\s\S]*Command::new\(&installer\)[\s\S]*\.arg\("\/S"\)/, 'Installer execution must occur only after staged-file revalidation and only in silent install mode.');
+
 assert.match(recovery, /Start-Service \$guardian/, 'Recovery must attempt to restore Guardian after service failure.');
 assert.match(recovery, /classifier-service-failed/, 'Classifier failure must be tracked without silently weakening media safety.');
 
