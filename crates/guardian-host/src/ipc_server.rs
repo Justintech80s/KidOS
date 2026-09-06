@@ -179,6 +179,69 @@ fn error_response(code: impl Into<String>, message: impl Into<String>) -> Privil
     PrivilegedResponse::Error { code: code.into(), message: message.into() }
 }
 
+
+#[cfg(target_os = "windows")]
+fn classifier_healthy() -> bool {
+    let token = match std::env::var("KIDOS_MEDIA_CLASSIFIER_TOKEN") {
+        Ok(value) => value,
+        Err(_) => {
+            let path = std::env::var("KIDOS_MEDIA_TOKEN_FILE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian\media-classifier.token"));
+            match fs::read_to_string(path) {
+                Ok(value) => value.trim().to_string(),
+                Err(_) => return false,
+            }
+        }
+    };
+    if token.len() < 32 {
+        return false;
+    }
+    let endpoint = std::env::var("KIDOS_MEDIA_CLASSIFIER_HEALTH_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8765/health".into());
+    let client = match reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(1))
+        .timeout(std::time::Duration::from_secs(4))
+        .build()
+    {
+        Ok(client) => client,
+        Err(_) => return false,
+    };
+    match client.get(endpoint).header("x-kidos-classifier-token", token).send() {
+        Ok(response) => response.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn policy_file_valid() -> bool {
+    let Ok(path) = policy_path() else { return false; };
+    if !path.exists() {
+        return true;
+    }
+    let Ok(contents) = fs::read_to_string(path) else { return false; };
+    serde_json::from_str::<ParentPolicyConfig>(&contents).is_ok()
+}
+
+#[cfg(target_os = "windows")]
+fn recovery_reason() -> Option<String> {
+    let path = recovery_marker_path().ok()?;
+    fs::read_to_string(path).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+}
+
+#[cfg(target_os = "windows")]
+fn reset_parent_policy_to_defaults(
+    parent_policy: &mut GuardianPolicyStore,
+) -> Result<(), String> {
+    let policy = ParentPolicyConfig::default();
+    parent_policy
+        .replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone())
+        .map_err(|error| error.to_string())?;
+    persist_parent_policy(&policy)?;
+    clear_recovery_marker();
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn validate_standard_windows_account(account: &str) -> Result<(), String> {
     let account = account.trim();
@@ -930,6 +993,52 @@ fn handle_request(
                 Ok(ParentAuthorizationResult::Locked) => error_response("parent_pin_locked", "Parent PIN verification is temporarily locked."),
                 Ok(ParentAuthorizationResult::Denied) => error_response("parent_pin_denied", "Parent PIN was not accepted."),
                 Err(_) => error_response("parent_pin_error", "KidOS could not verify the parent PIN."),
+            }
+        }
+        PrivilegedRequest::RecoveryStatus => {
+            let (lockdown_state, lockdown_reason) = current_platform_state();
+            let marker_reason = recovery_reason().or(lockdown_reason);
+            PrivilegedResponse::RecoveryStatus {
+                guardian_healthy: true,
+                classifier_healthy: classifier_healthy(),
+                recovery_required: marker_reason.is_some(),
+                recovery_reason: marker_reason,
+                policy_valid: policy_file_valid(),
+                lockdown_state,
+            }
+        }
+        PrivilegedRequest::RunRecovery { pin, action } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
+
+            match action.as_str() {
+                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy) {
+                    Ok(()) => PrivilegedResponse::Ack { message: "KidOS parent policy was reset to safe defaults.".into() },
+                    Err(message) => error_response("recovery_policy_reset_failed", message),
+                },
+                "remove_lockdown" => match lockdown_service.remove_lockdown(true) {
+                    Ok(()) => {
+                        clear_recovery_marker();
+                        PrivilegedResponse::Ack { message: "KidOS Windows lockdown was removed for parent recovery.".into() }
+                    }
+                    Err(error) => error_response("recovery_remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
+                },
+                "clear_recovery_marker" => {
+                    if !policy_file_valid() {
+                        return error_response("recovery_still_required", "Parent policy is still invalid.");
+                    }
+                    let (state, reason) = current_platform_state();
+                    if state == "restricted_safe_mode" || reason.is_some() {
+                        return error_response("recovery_still_required", "Windows lockdown state is still unhealthy.");
+                    }
+                    clear_recovery_marker();
+                    PrivilegedResponse::Ack { message: "KidOS recovery warning was cleared after health checks passed.".into() }
+                }
+                _ => error_response("invalid_recovery_action", "KidOS rejected an unknown recovery action."),
             }
         }
         PrivilegedRequest::ApplyLockdown { profile } => {
