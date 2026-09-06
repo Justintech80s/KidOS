@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 use semver::Version;
 #[cfg(target_os = "windows")]
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "windows")]
@@ -10,16 +10,21 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
+    thread,
     time::Duration,
 };
 
 #[cfg(target_os = "windows")]
 const RELEASE_PREFIX: &str = "https://github.com/Justintech80s/KidOS/releases/download/";
 #[cfg(target_os = "windows")]
+pub const DEFAULT_MANIFEST_URL: &str = "https://github.com/Justintech80s/KidOS/releases/latest/download/KidOS-update-manifest.json";
+#[cfg(target_os = "windows")]
 const MAX_INSTALLER_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+#[cfg(target_os = "windows")]
+const UPDATE_CHECK_SECONDS: u64 = 6 * 60 * 60;
 
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateManifest {
     pub schema_version: u32,
@@ -30,7 +35,7 @@ pub struct UpdateManifest {
 }
 
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInstaller {
     pub file_name: String,
@@ -41,7 +46,7 @@ pub struct UpdateInstaller {
 }
 
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticodeMetadata {
     pub status: String,
@@ -71,19 +76,33 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn validate_release_url(value: &str, expected_suffix: Option<&str>) -> Result<(), String> {
-    if !value.starts_with(RELEASE_PREFIX) {
-        return Err("KidOS updates must come from the official KidOS GitHub Releases path.".into());
+fn validate_manifest_url(value: &str) -> Result<(), String> {
+    if value != DEFAULT_MANIFEST_URL && !value.starts_with(RELEASE_PREFIX) {
+        return Err("KidOS update manifests must come from the official KidOS GitHub Releases path.".into());
     }
     let parsed = reqwest::Url::parse(value)
-        .map_err(|_| "KidOS rejected an invalid update URL.".to_string())?;
+        .map_err(|_| "KidOS rejected an invalid update manifest URL.".to_string())?;
     if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") {
-        return Err("KidOS update URLs must use HTTPS on github.com.".into());
+        return Err("KidOS update manifest URLs must use HTTPS on github.com.".into());
     }
-    if let Some(suffix) = expected_suffix {
-        if !parsed.path().ends_with(suffix) {
-            return Err("KidOS update URL does not match the expected release artifact.".into());
-        }
+    if !parsed.path().ends_with("/KidOS-update-manifest.json") {
+        return Err("KidOS rejected an unexpected update manifest filename.".into());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn validate_installer_url(value: &str, expected_name: &str) -> Result<(), String> {
+    if !value.starts_with(RELEASE_PREFIX) {
+        return Err("KidOS installers must come from the official versioned KidOS GitHub Releases path.".into());
+    }
+    let parsed = reqwest::Url::parse(value)
+        .map_err(|_| "KidOS rejected an invalid update installer URL.".to_string())?;
+    if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") {
+        return Err("KidOS update installers must use HTTPS on github.com.".into());
+    }
+    if !parsed.path().ends_with(&format!("/{expected_name}")) {
+        return Err("KidOS update URL does not match the expected release artifact.".into());
     }
     Ok(())
 }
@@ -113,7 +132,7 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<(), String> {
     {
         return Err("KidOS update manifest contains an invalid installer filename.".into());
     }
-    validate_release_url(&manifest.installer.url, Some(&manifest.installer.file_name))?;
+    validate_installer_url(&manifest.installer.url, &manifest.installer.file_name)?;
     if manifest.installer.size_bytes == 0 || manifest.installer.size_bytes > MAX_INSTALLER_BYTES {
         return Err("KidOS update installer size is outside the allowed range.".into());
     }
@@ -137,7 +156,7 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 pub fn fetch_manifest(manifest_url: &str) -> Result<UpdateManifest, String> {
-    validate_release_url(manifest_url, Some("KidOS-update-manifest.json"))?;
+    validate_manifest_url(manifest_url)?;
     let response = http_client()?
         .get(manifest_url)
         .send()
@@ -175,14 +194,27 @@ pub fn check_update(manifest_url: &str) -> Result<UpdateAvailability, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn staging_dir() -> Result<PathBuf, String> {
+fn update_root() -> Result<PathBuf, String> {
     let base = std::env::var_os("PROGRAMDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
-    let dir = base.join("KidOS").join("Updates").join("Staging");
+    let dir = base.join("KidOS").join("Guardian").join("Updates");
+    fs::create_dir_all(&dir)
+        .map_err(|_| "KidOS could not create its protected update directory.".to_string())?;
+    Ok(dir)
+}
+
+#[cfg(target_os = "windows")]
+fn staging_dir() -> Result<PathBuf, String> {
+    let dir = update_root()?.join("Staging");
     fs::create_dir_all(&dir)
         .map_err(|_| "KidOS could not create its protected update staging directory.".to_string())?;
     Ok(dir)
+}
+
+#[cfg(target_os = "windows")]
+fn pending_manifest_path() -> Result<PathBuf, String> {
+    Ok(update_root()?.join("pending-update.json"))
 }
 
 #[cfg(target_os = "windows")]
@@ -244,6 +276,26 @@ fn download_installer(manifest: &UpdateManifest) -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "windows")]
+fn hash_file(path: &Path) -> Result<(String, u64), String> {
+    let mut file = File::open(path)
+        .map_err(|_| "KidOS could not open its staged update installer.".to_string())?;
+    let mut hasher = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)
+            .map_err(|_| "KidOS could not verify its staged update installer.".to_string())?;
+        if count == 0 { break; }
+        total = total.saturating_add(count as u64);
+        if total > MAX_INSTALLER_BYTES {
+            return Err("KidOS blocked an oversized staged update installer.".into());
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok((format!("{:x}", hasher.finalize()), total))
+}
+
+#[cfg(target_os = "windows")]
 fn verify_authenticode(path: &Path, expected_thumbprint: &str) -> Result<(), String> {
     let script = "$s=Get-AuthenticodeSignature -LiteralPath $args[0]; if($s.Status -ne 'Valid' -or -not $s.SignerCertificate){exit 20}; [Console]::Out.Write($s.SignerCertificate.Thumbprint)";
     let output = Command::new("powershell.exe")
@@ -263,6 +315,22 @@ fn verify_authenticode(path: &Path, expected_thumbprint: &str) -> Result<(), Str
 }
 
 #[cfg(target_os = "windows")]
+fn verify_staged_installer(manifest: &UpdateManifest, installer: &Path) -> Result<(), String> {
+    let canonical_root = fs::canonicalize(staging_dir()?)
+        .map_err(|_| "KidOS update staging directory is unavailable.".to_string())?;
+    let canonical_installer = fs::canonicalize(installer)
+        .map_err(|_| "KidOS staged update installer is missing.".to_string())?;
+    if !canonical_installer.starts_with(&canonical_root) || !canonical_installer.is_file() {
+        return Err("KidOS rejected an update installer outside its protected staging directory.".into());
+    }
+    let (digest, size) = hash_file(&canonical_installer)?;
+    if size != manifest.installer.size_bytes || !digest.eq_ignore_ascii_case(&manifest.installer.sha256) {
+        return Err("KidOS blocked a staged update that no longer matches its trusted manifest.".into());
+    }
+    verify_authenticode(&canonical_installer, &manifest.installer.authenticode.signer_thumbprint)
+}
+
+#[cfg(target_os = "windows")]
 pub fn stage_verified_update(manifest_url: &str) -> Result<(UpdateManifest, PathBuf), String> {
     let manifest = fetch_manifest(manifest_url)?;
     let current = Version::parse(env!("CARGO_PKG_VERSION"))
@@ -274,7 +342,7 @@ pub fn stage_verified_update(manifest_url: &str) -> Result<(UpdateManifest, Path
     }
 
     let installer = download_installer(&manifest)?;
-    if let Err(error) = verify_authenticode(&installer, &manifest.installer.authenticode.signer_thumbprint) {
+    if let Err(error) = verify_staged_installer(&manifest, &installer) {
         let _ = fs::remove_file(&installer);
         return Err(error);
     }
@@ -282,10 +350,73 @@ pub fn stage_verified_update(manifest_url: &str) -> Result<(UpdateManifest, Path
 }
 
 #[cfg(target_os = "windows")]
-pub fn launch_verified_update(installer: &Path) -> Result<(), String> {
-    Command::new(installer)
+fn save_pending_update(manifest: &UpdateManifest) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(manifest)
+        .map_err(|_| "KidOS could not encode its pending update record.".to_string())?;
+    let path = pending_manifest_path()?;
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, bytes)
+        .map_err(|_| "KidOS could not save its pending update record.".to_string())?;
+    fs::rename(temporary, path)
+        .map_err(|_| "KidOS could not finalize its pending update record.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub fn stage_latest_update() -> Result<Option<String>, String> {
+    let availability = check_update(DEFAULT_MANIFEST_URL)?;
+    if !availability.available {
+        return Ok(None);
+    }
+    let (manifest, _installer) = stage_verified_update(DEFAULT_MANIFEST_URL)?;
+    save_pending_update(&manifest)?;
+    Ok(Some(manifest.version))
+}
+
+#[cfg(target_os = "windows")]
+pub fn launch_pending_update_if_verified() -> Result<Option<String>, String> {
+    let pending_path = pending_manifest_path()?;
+    if !pending_path.exists() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&pending_path)
+        .map_err(|_| "KidOS could not read its pending update record.".to_string())?;
+    let manifest: UpdateManifest = serde_json::from_slice(&bytes)
+        .map_err(|_| "KidOS rejected a corrupted pending update record.".to_string())?;
+    validate_manifest(&manifest)?;
+
+    let current = Version::parse(env!("CARGO_PKG_VERSION"))
+        .map_err(|_| "KidOS current version is invalid.".to_string())?;
+    let candidate = Version::parse(&manifest.version)
+        .map_err(|_| "KidOS pending update version is invalid.".to_string())?;
+    if candidate <= current {
+        let _ = fs::remove_file(&pending_path);
+        let _ = fs::remove_file(staging_dir()?.join(&manifest.installer.file_name));
+        return Ok(None);
+    }
+
+    let installer = staging_dir()?.join(&manifest.installer.file_name);
+    verify_staged_installer(&manifest, &installer)?;
+    Command::new(&installer)
         .arg("/S")
         .spawn()
-        .map_err(|_| "KidOS could not launch the verified update installer.".to_string())?;
-    Ok(())
+        .map_err(|_| "KidOS could not launch its verified pending update installer.".to_string())?;
+    let _ = fs::remove_file(&pending_path);
+    Ok(Some(manifest.version))
+}
+
+#[cfg(target_os = "windows")]
+pub fn run_update_monitor() {
+    thread::sleep(Duration::from_secs(60));
+    loop {
+        match stage_latest_update() {
+            Ok(Some(version)) => {
+                eprintln!("KidOS Guardian staged trusted update {version}; it will install after the next Guardian restart/reboot.");
+            }
+            Ok(None) => {}
+            Err(error) => {
+                eprintln!("KidOS Guardian update check failed safely: {error}");
+            }
+        }
+        thread::sleep(Duration::from_secs(UPDATE_CHECK_SECONDS));
+    }
 }
