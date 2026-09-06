@@ -20,15 +20,11 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -45,15 +41,7 @@ jobs:
 
       - name: Package local AI classifier and bundled model
         shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "services/media-classifier[packaging]"
-          python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openai/clip-vit-base-patch32', local_dir='services/media-classifier/dist/model')"
-          Push-Location services/media-classifier
-          pyinstaller --clean --noconfirm kidos-media-classifier.spec
-          Pop-Location
-          if (-not (Test-Path "services/media-classifier/dist/kidos-media-classifier.exe")) { throw "Classifier executable was not produced." }
-          if (-not (Test-Path "services/media-classifier/dist/model/config.json")) { throw "Classifier model bundle was not produced." }
+        run: ./scripts/windows/package-media-classifier.ps1
 
       - name: Build privileged Guardian service
         run: cargo build -p kidos-guardian-host --release
