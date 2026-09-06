@@ -1,0 +1,37 @@
+name: KidOS Interactive Windows Session Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      child_user:
+        description: "Windows child account that was used for the interactive KidOS login"
+        required: true
+        default: "KidOSInteractiveChild"
+      expected_kidos_exe:
+        description: "KidOS shell executable name"
+        required: true
+        default: "KidOS.exe"
+
+jobs:
+  verify-interactive-session:
+    runs-on: [self-hosted, Windows, X64, kidos-interactive-test]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify rebooted KidOS child session
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $result = ./tests/windows/interactive-session-verify.ps1 `
+            -ChildUser "${{ inputs.child_user }}" `
+            -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}"
+          $result | Set-Content artifacts/interactive-session-result.json -Encoding UTF8
+          Get-Content artifacts/interactive-session-result.json
+
+      - name: Upload interactive validation result
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Interactive-Session-Validation
+          path: artifacts/interactive-session-result.json
+          if-no-files-found: error
