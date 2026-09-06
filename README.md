@@ -26,16 +26,16 @@ KidOS is a child-first computing environment designed around safe browsing, pare
 
 | Platform | Status | Download |
 | --- | --- | --- |
-| **Windows 11 x64** | 🧪 Experimental | [Download the latest KidOS Windows installer artifact](https://github.com/Justintech80s/KidOS/actions/workflows/ci.yml) |
-| **Windows 10 x64** | 🧪 Experimental | [Download the latest KidOS Windows installer artifact](https://github.com/Justintech80s/KidOS/actions/workflows/ci.yml) |
+| **Windows 11 x64** | 🧪 Experimental | **[⬇ Download KidOS Experimental Installer](https://github.com/Justintech80s/KidOS/releases/download/experimental-latest/KidOS-Windows-10-11-x64-Experimental.exe)** |
+| **Windows 10 x64** | 🧪 Experimental | **[⬇ Download KidOS Experimental Installer](https://github.com/Justintech80s/KidOS/releases/download/experimental-latest/KidOS-Windows-10-11-x64-Experimental.exe)** |
 
-### How to download the experimental Windows installer
+### Easy download — 3 steps
 
-1. Open the **KidOS Windows Release CI** link above.
-2. Open the newest successful workflow run.
-3. Scroll to **Artifacts**.
-4. Download **KidOS-Windows-10-11-x64-Experimental**.
-5. Extract the ZIP and run the included `.exe` installer only in a VM or disposable test account.
+1. Click **⬇ Download KidOS Experimental Installer** above.
+2. The `.exe` file will go to your device's normal **Downloads** folder.
+3. Open **Downloads**, double-click **KidOS-Windows-10-11-x64-Experimental.exe**, and follow the Windows installation prompts.
+
+> Windows may show a security warning because this experimental build is not yet the final trusted code-signed release. Only continue on a VM or disposable test account.
 
 **Important:** KidOS is designed to manage/lock down a child Windows session. Until the real reboot → child-login → Assigned Access tests and trusted code-signing release are complete, treat every downloadable build as test software.
 
