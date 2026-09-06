@@ -21,6 +21,7 @@ assert.match(hooks, /obj= LocalSystem/, 'Privileged KidOS services must run as L
 assert.match(hooks, /icacls\.exe/, 'Installer must harden KidOS service directories.');
 assert.match(hooks, /KidOS Guardian Recovery/, 'Installer must register the recovery task.');
 assert.match(hooks, /\/RU SYSTEM/, 'Recovery task must run under SYSTEM.');
+assert.match(hooks, /publisher-thumbprint\.txt/, 'Signed production installs must pin their Windows publisher certificate.');
 assert.doesNotMatch(hooks, /AutoAdminLogon|DefaultPassword/, 'Production installer must never enable Windows automatic logon.');
 
 assert.match(browserHost, /matches!\(url\.scheme\(\), "https" \| "http"\)/, 'Safe Browser must restrict navigations to HTTP(S).');
@@ -36,9 +37,10 @@ assert.match(guardianIpc, /validate_standard_windows_account/, 'Guardian must va
 assert.match(updater, /https:\/\/github\.com\/Justintech80s\/KidOS\/releases\//, 'Updater must be pinned to the official KidOS GitHub release namespace.');
 assert.match(updater, /Sha256/, 'Updater must hash downloaded installers with SHA-256.');
 assert.match(updater, /Get-AuthenticodeSignature/, 'Updater must verify Windows Authenticode signatures.');
-assert.match(updater, /signer_thumbprint/, 'Updater must pin the signer certificate thumbprint from the trusted manifest.');
+assert.match(updater, /pinned_publisher_thumbprint/, 'Updater must compare releases against the publisher certificate pinned at install time.');
+assert.match(updater, /publisher-thumbprint\.txt/, 'Updater must load its publisher pin from protected Guardian storage.');
 assert.match(updater, /candidate <= current/, 'Updater must reject rollback and same-version installs.');
-assert.match(updater, /Guardian.*Updates/, 'Updater staging must remain under protected Guardian storage.');
+assert.match(updater, /Guardian.*Updates|guardian_data_dir\(\).*Updates/s, 'Updater staging must remain under protected Guardian storage.');
 assert.match(updater, /verify_staged_installer/, 'A staged update must be reverified before execution.');
 
 assert.match(recovery, /Start-Service \$guardian/, 'Recovery must attempt to restore Guardian after service failure.');
