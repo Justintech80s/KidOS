@@ -14,6 +14,15 @@ export interface QuarantineItem {
   fileName: string;
   sizeBytes: number;
   modifiedSeconds: number;
+  category?: string;
+  risk?: string;
+  confidence?: number;
+  reason?: string;
+}
+
+export interface QuarantinePreview {
+  mimeType: string;
+  dataBase64: string;
 }
 
 export type QuarantineAction = 'approve' | 'delete' | 'keep_blocked';
@@ -37,6 +46,7 @@ export interface KidOSApi {
   requestParentMaintenanceUnlock(pin: string, durationMinutes: number): Promise<ParentUnlockGrant>;
   removeWindowsLockdown(pin: string): Promise<LockdownStatus>;
   listQuarantineMedia?(pin: string): Promise<QuarantineItem[]>;
+  previewQuarantineMedia?(pin: string, itemId: string): Promise<QuarantinePreview>;
   reviewQuarantineMedia?(pin: string, itemId: string, action: QuarantineAction): Promise<void>;
 }
 
@@ -54,5 +64,6 @@ export const tauriKidOSApi: KidOSApi = {
   requestParentMaintenanceUnlock(pin, durationMinutes) { return invoke<ParentUnlockGrant>('request_parent_maintenance_unlock', { pin, durationMinutes }); },
   removeWindowsLockdown(pin) { return invoke<LockdownStatus>('remove_windows_lockdown', { pin }); },
   listQuarantineMedia(pin) { return invoke<QuarantineItem[]>('list_quarantine_media', { pin }); },
+  previewQuarantineMedia(pin, itemId) { return invoke<QuarantinePreview>('preview_quarantine_media', { pin, itemId }); },
   reviewQuarantineMedia(pin, itemId, action) { return invoke<void>('review_quarantine_media', { pin, itemId, action }); },
 };
