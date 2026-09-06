@@ -29,7 +29,7 @@ use policy_core::{
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
+    Foundation::{CloseHandle, GetLastError, LocalFree, HANDLE, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
     NetworkManagement::NetManagement::{
         NetApiBufferFree, NetUserGetInfo, USER_INFO_1, USER_PRIV_ADMIN, USER_PRIV_GUEST,
         USER_PRIV_USER, NERR_Success,
@@ -37,9 +37,8 @@ use windows_sys::Win32::{
     Security::{Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW, SECURITY_ATTRIBUTES},
     Storage::FileSystem::{FlushFileBuffers, ReadFile, WriteFile},
     System::{
-        Memory::LocalFree,
         Pipes::{
-            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_ACCESS_DUPLEX,
+            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe,
             PIPE_READMODE_MESSAGE, PIPE_TYPE_MESSAGE, PIPE_WAIT,
         },
     },
@@ -52,6 +51,8 @@ fn wide(value: &str) -> Vec<u16> {
 
 #[cfg(target_os = "windows")]
 const PARENT_PIN_KEY: &str = "parent-pin";
+#[cfg(target_os = "windows")]
+const PIPE_ACCESS_DUPLEX_VALUE: u32 = 0x0000_0003;
 
 #[cfg(target_os = "windows")]
 fn now_seconds() -> u64 {
@@ -258,7 +259,7 @@ fn validate_standard_windows_account(account: &str) -> Result<(), String> {
 
     let info = unsafe { &*(buffer as *const USER_INFO_1) };
     let privilege = info.usri1_priv;
-    unsafe { NetApiBufferFree(buffer) };
+    unsafe { NetApiBufferFree(buffer.cast()) };
 
     match privilege {
         USER_PRIV_USER => Ok(()),
@@ -1096,7 +1097,7 @@ fn handle_request(
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn create_pipe() -> Result<isize, String> {
+unsafe fn create_pipe() -> Result<HANDLE, String> {
     // SYSTEM and Administrators get full access; authenticated users can only connect/read/write.
     // Privileged parent-sensitive commands remain denied by the server protocol itself.
     let sddl = wide("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)");
@@ -1120,7 +1121,7 @@ unsafe fn create_pipe() -> Result<isize, String> {
     let pipe_name = wide(GUARDIAN_PIPE_NAME);
     let handle = CreateNamedPipeW(
         pipe_name.as_ptr(),
-        PIPE_ACCESS_DUPLEX,
+        PIPE_ACCESS_DUPLEX_VALUE,
         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
         8,
         MAX_IPC_MESSAGE_BYTES as u32,
@@ -1129,7 +1130,7 @@ unsafe fn create_pipe() -> Result<isize, String> {
         &mut attributes,
     );
 
-    let _ = LocalFree(descriptor as isize);
+    let _ = LocalFree(descriptor.cast());
 
     if handle == INVALID_HANDLE_VALUE {
         Err("Guardian could not create its privileged named pipe.".into())
