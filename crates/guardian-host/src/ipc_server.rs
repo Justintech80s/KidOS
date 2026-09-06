@@ -370,6 +370,103 @@ fn evaluate_classifier_response(
     )
 }
 
+
+#[cfg(target_os = "windows")]
+fn quarantine_pending_dir() -> PathBuf {
+    PathBuf::from(r"C:\ProgramData\KidOS\Quarantine\Pending")
+}
+
+#[cfg(target_os = "windows")]
+fn quarantine_blocked_dir() -> PathBuf {
+    PathBuf::from(r"C:\ProgramData\KidOS\Quarantine\Blocked")
+}
+
+#[cfg(target_os = "windows")]
+fn quarantine_approved_dir() -> PathBuf {
+    PathBuf::from(r"C:\ProgramData\KidOS\Quarantine\Approved")
+}
+
+#[cfg(target_os = "windows")]
+fn safe_quarantine_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 220
+        && !value.contains("..")
+        && !value.contains('/')
+        && !value.contains('\\')
+        && value.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | ' ' | '(' | ')'))
+}
+
+#[cfg(target_os = "windows")]
+fn list_quarantine_items() -> Result<Vec<guardian_service::privileged_ipc::QuarantineItem>, String> {
+    let directory = quarantine_pending_dir();
+    fs::create_dir_all(&directory)
+        .map_err(|_| "KidOS could not open the protected quarantine folder.".to_string())?;
+
+    let mut items = Vec::new();
+    for entry in fs::read_dir(&directory)
+        .map_err(|_| "KidOS could not read the protected quarantine folder.".to_string())?
+    {
+        let entry = entry.map_err(|_| "KidOS could not read a quarantine item.".to_string())?;
+        let metadata = entry.metadata().map_err(|_| "KidOS could not inspect a quarantine item.".to_string())?;
+        if !metadata.is_file() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        if !safe_quarantine_id(&id) {
+            continue;
+        }
+        let file_name = id.splitn(3, '-').nth(2).unwrap_or(&id).to_string();
+        let modified_seconds = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|value| value.as_secs())
+            .unwrap_or(0);
+        items.push(guardian_service::privileged_ipc::QuarantineItem {
+            id,
+            file_name,
+            size_bytes: metadata.len(),
+            modified_seconds,
+        });
+    }
+    items.sort_by(|a, b| b.modified_seconds.cmp(&a.modified_seconds));
+    Ok(items)
+}
+
+#[cfg(target_os = "windows")]
+fn review_quarantine_item(item_id: &str, action: &str) -> Result<(), String> {
+    if !safe_quarantine_id(item_id) {
+        return Err("KidOS rejected an invalid quarantine item identifier.".into());
+    }
+
+    let source = quarantine_pending_dir().join(item_id);
+    let canonical_parent = fs::canonicalize(quarantine_pending_dir())
+        .map_err(|_| "KidOS quarantine directory is unavailable.".to_string())?;
+    let canonical_source = fs::canonicalize(&source)
+        .map_err(|_| "The quarantine item no longer exists.".to_string())?;
+    if !canonical_source.starts_with(&canonical_parent) || !canonical_source.is_file() {
+        return Err("KidOS rejected a quarantine path outside its protected folder.".into());
+    }
+
+    match action {
+        "approve" => {
+            let target_dir = quarantine_approved_dir();
+            fs::create_dir_all(&target_dir).map_err(|_| "KidOS could not create the approved-media folder.".to_string())?;
+            fs::rename(&canonical_source, target_dir.join(item_id))
+                .map_err(|_| "KidOS could not approve this quarantine item.".to_string())
+        }
+        "delete" => fs::remove_file(&canonical_source)
+            .map_err(|_| "KidOS could not delete this quarantine item.".to_string()),
+        "keep_blocked" => {
+            let target_dir = quarantine_blocked_dir();
+            fs::create_dir_all(&target_dir).map_err(|_| "KidOS could not create the blocked-media folder.".to_string())?;
+            fs::rename(&canonical_source, target_dir.join(item_id))
+                .map_err(|_| "KidOS could not retain this quarantine item as blocked.".to_string())
+        }
+        _ => Err("KidOS rejected an unknown quarantine review action.".into()),
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<LockdownProfile, String> {
     validate_standard_windows_account(&profile.account)?;
@@ -599,6 +696,28 @@ fn handle_request(
                 confidence,
                 high_confidence,
                 frames_checked,
+            }
+        }
+        PrivilegedRequest::ListQuarantine { pin } => {
+            match parent_authorization.verify(&pin, now_seconds()) {
+                Ok(ParentAuthorizationResult::Authorized) => match list_quarantine_items() {
+                    Ok(items) => PrivilegedResponse::QuarantineItems { items },
+                    Err(message) => error_response("quarantine_list_failed", &message),
+                },
+                Ok(ParentAuthorizationResult::Locked) => error_response("parent_pin_locked", "Parent PIN verification is temporarily locked."),
+                Ok(ParentAuthorizationResult::Denied) => error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Err(_) => error_response("parent_pin_error", "KidOS could not verify the parent PIN."),
+            }
+        }
+        PrivilegedRequest::ReviewQuarantine { pin, item_id, action } => {
+            match parent_authorization.verify(&pin, now_seconds()) {
+                Ok(ParentAuthorizationResult::Authorized) => match review_quarantine_item(&item_id, &action) {
+                    Ok(()) => PrivilegedResponse::Ack { message: format!("Quarantine item action '{}' completed.", action) },
+                    Err(message) => error_response("quarantine_review_failed", &message),
+                },
+                Ok(ParentAuthorizationResult::Locked) => error_response("parent_pin_locked", "Parent PIN verification is temporarily locked."),
+                Ok(ParentAuthorizationResult::Denied) => error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Err(_) => error_response("parent_pin_error", "KidOS could not verify the parent PIN."),
             }
         }
         PrivilegedRequest::ApplyLockdown { profile } => {
