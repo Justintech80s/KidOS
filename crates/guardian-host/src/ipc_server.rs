@@ -251,6 +251,115 @@ fn guardian_download_decision(
     }
 }
 
+
+#[cfg(target_os = "windows")]
+#[derive(serde::Serialize)]
+struct ClassifierRequest<'a> {
+    path: &'a str,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(serde::Deserialize)]
+struct ClassifierResponse {
+    category: String,
+    risk: String,
+    confidence: f32,
+    high_confidence: bool,
+    classifier_available: bool,
+    frames_checked: u32,
+}
+
+#[cfg(target_os = "windows")]
+fn classify_media_file_with_local_ai(path: &str) -> Result<ClassifierResponse, String> {
+    let path_obj = std::path::Path::new(path);
+    if !path_obj.is_absolute() || !path_obj.is_file() {
+        return Err("KidOS classifier received an invalid media path.".into());
+    }
+
+    let token = std::env::var("KIDOS_MEDIA_CLASSIFIER_TOKEN")
+        .map_err(|_| "KidOS media classifier token is not configured.".to_string())?;
+    if token.len() < 16 {
+        return Err("KidOS media classifier token is too short.".into());
+    }
+
+    let endpoint = std::env::var("KIDOS_MEDIA_CLASSIFIER_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8765/classify".into());
+
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(45))
+        .build()
+        .map_err(|_| "KidOS could not initialize its local classifier client.".to_string())?;
+
+    let response = client
+        .post(endpoint)
+        .header("x-kidos-classifier-token", token)
+        .json(&ClassifierRequest { path })
+        .send()
+        .map_err(|_| "KidOS local media classifier is unavailable.".to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "KidOS local media classifier returned HTTP {}.",
+            response.status()
+        ));
+    }
+
+    response
+        .json::<ClassifierResponse>()
+        .map_err(|_| "KidOS received an invalid classifier response.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn evaluate_classifier_response(
+    file_name: &str,
+    classified: &ClassifierResponse,
+    policy: &ParentPolicyConfig,
+) -> (&'static str, String, String, f32, bool, u32) {
+    let category = match classified.category.as_str() {
+        "safe" => MediaCategory::Safe,
+        "adult_nudity" => MediaCategory::AdultNudity,
+        "sexualized_content" => MediaCategory::SexualizedContent,
+        "graphic_violence" => MediaCategory::GraphicViolence,
+        "self_harm" => MediaCategory::SelfHarm,
+        "drugs" => MediaCategory::Drugs,
+        "extremist_content" => MediaCategory::ExtremistContent,
+        "scam" => MediaCategory::Scam,
+        _ => MediaCategory::Uncertain,
+    };
+    let risk = match classified.risk.as_str() {
+        "low" => MediaRisk::Low,
+        "medium" => MediaRisk::Medium,
+        "high" => MediaRisk::High,
+        _ => MediaRisk::High,
+    };
+
+    let context = MediaContext {
+        age: policy.child_age,
+        category,
+        risk,
+        high_confidence: classified.high_confidence,
+        parent_blocked: false,
+        classifier_available: classified.classifier_available,
+        teen_uncertain_enabled: false,
+    };
+
+    let decision = match evaluate_media_policy(&context) {
+        PolicyDecision::Allow => "allow",
+        PolicyDecision::Block => "block",
+        PolicyDecision::RequireParent => "require_parent",
+    };
+
+    (
+        decision,
+        classified.category.clone(),
+        classified.risk.clone(),
+        classified.confidence,
+        classified.high_confidence,
+        classified.frames_checked,
+    )
+}
+
 #[cfg(target_os = "windows")]
 fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfile) -> Result<LockdownProfile, String> {
     validate_standard_windows_account(&profile.account)?;
@@ -444,6 +553,43 @@ fn handle_request(
                 PolicyDecision::RequireParent => "require_parent",
             };
             PrivilegedResponse::PolicyDecision { decision: decision.into() }
+        }
+        PrivilegedRequest::ClassifyMediaFile { path } => {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("media")
+                .to_string();
+
+            let classified = match classify_media_file_with_local_ai(&path) {
+                Ok(value) => value,
+                Err(error) => {
+                    return PrivilegedResponse::MediaClassification {
+                        decision: "require_parent".into(),
+                        category: "uncertain".into(),
+                        risk: "high".into(),
+                        confidence: 0.0,
+                        high_confidence: false,
+                        frames_checked: 0,
+                    };
+                }
+            };
+
+            let (decision, category, risk, confidence, high_confidence, frames_checked) =
+                evaluate_classifier_response(
+                    &file_name,
+                    &classified,
+                    parent_policy.current_parent_policy(),
+                );
+
+            PrivilegedResponse::MediaClassification {
+                decision: decision.into(),
+                category,
+                risk,
+                confidence,
+                high_confidence,
+                frames_checked,
+            }
         }
         PrivilegedRequest::ApplyLockdown { profile } => {
             let profile = match profile_from_ipc(profile) {
