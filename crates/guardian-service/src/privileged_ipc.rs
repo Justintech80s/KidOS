@@ -53,6 +53,12 @@ pub enum PrivilegedRequest {
         classifier_available: bool,
     },
     ClassifyMediaFile { path: String },
+    ListQuarantine { pin: String },
+    ReviewQuarantine {
+        pin: String,
+        item_id: String,
+        action: String,
+    },
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
@@ -81,6 +87,9 @@ pub enum PrivilegedResponse {
         confidence: f32,
         high_confidence: bool,
         frames_checked: u32,
+    },
+    QuarantineItems {
+        items: Vec<QuarantineItem>,
     },
     Ack { message: String },
     Error { code: String, message: String },
