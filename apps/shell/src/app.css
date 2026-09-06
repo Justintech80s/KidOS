@@ -953,3 +953,53 @@ button { -webkit-tap-highlight-color: transparent; }
   .approved-app-row { grid-template-columns: 28px 1fr auto; }
   .approved-app-row small { grid-column: 2 / -1; }
 }
+
+
+.recovery-center {
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid #d8e6ee;
+  border-radius: 22px;
+  background: #fbfdff;
+}
+.recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.recovery-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 15px;
+  background: #f2f8fb;
+  color: #315d75;
+}
+.recovery-grid span {
+  font-size: .76rem;
+  color: #6d8595;
+  font-weight: 750;
+}
+.recovery-alert {
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: #fff1e8;
+  color: #8a4a21;
+  font-weight: 800;
+}
+.recovery-ok {
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: #eaf8ef;
+  color: #2c6b40;
+  font-weight: 800;
+}
+.recovery-note {
+  color: #687f8e;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+@media(max-width:700px){
+  .recovery-grid { grid-template-columns: 1fr; }
+}
