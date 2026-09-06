@@ -132,6 +132,17 @@ jobs:
           $manifest | Set-Content target/release/KidOS-SHA256SUMS.txt -Encoding ASCII
           ./scripts/windows/new-update-manifest.ps1 -Version $version -InstallerPath $installer -OutputPath target/release/KidOS-update-manifest.json
 
+      - name: Generate release SBOM
+        shell: pwsh
+        run: |
+          ./scripts/release/new-sbom.ps1 -OutputPath target/release/KidOS-SBOM.cdx.json
+
+      - name: Attest KidOS SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: target/release/bundle/nsis/*-setup.exe
+          sbom-path: target/release/KidOS-SBOM.cdx.json
+
       - name: Attest trusted Windows release provenance
         uses: actions/attest@v4
         with:
@@ -148,6 +159,7 @@ jobs:
             target/release/bundle/nsis/*-setup.exe
             target/release/KidOS-SHA256SUMS.txt
             target/release/KidOS-update-manifest.json
+            target/release/KidOS-SBOM.cdx.json
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -156,4 +168,4 @@ jobs:
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          gh release create $tag $installer target/release/KidOS-SHA256SUMS.txt target/release/KidOS-update-manifest.json --title "KidOS $tag" --generate-notes
+          gh release create $tag $installer target/release/KidOS-SHA256SUMS.txt target/release/KidOS-update-manifest.json target/release/KidOS-SBOM.cdx.json --title "KidOS $tag" --generate-notes
