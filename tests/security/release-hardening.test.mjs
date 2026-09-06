@@ -49,7 +49,9 @@ assert.deepEqual(
   ['"powershell.exe"', '&installer'],
   'The privileged updater may invoke only Windows signature verification and its already-verified staged installer.',
 );
-assert.match(updater, /Command::new\("powershell\.exe"\)[\s\S]*Get-AuthenticodeSignature/, 'The PowerShell exception must exist only for Authenticode verification.');
+const signatureVerifier = updater.match(/fn verify_authenticode[\s\S]*?\n}\r?\n/)?.[0] ?? '';
+assert.match(signatureVerifier, /Get-AuthenticodeSignature/, 'The updater signature-verification function must use Windows Authenticode.');
+assert.match(signatureVerifier, /Command::new\("powershell\.exe"\)/, 'The only PowerShell updater command must be inside Authenticode verification.');
 assert.match(updater, /verify_staged_installer\(&manifest, &installer\)\?[\s\S]*Command::new\(&installer\)[\s\S]*\.arg\("\/S"\)/, 'Installer execution must occur only after staged-file revalidation and only in silent install mode.');
 
 assert.match(recovery, /Start-Service \$guardian/, 'Recovery must attempt to restore Guardian after service failure.');
