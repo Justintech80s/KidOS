@@ -148,16 +148,69 @@ pub fn decode_privileged_request(bytes: &[u8]) -> Result<PrivilegedRequestEnvelo
 mod tests {
     use super::*;
 
+    fn status_request(session_id: &str, nonce: &str, version: u16) -> PrivilegedRequestEnvelope {
+        PrivilegedRequestEnvelope {
+            version,
+            session_id: session_id.into(),
+            nonce: nonce.into(),
+            request: PrivilegedRequest::Status,
+        }
+    }
+
     #[test]
     fn rejects_replayed_privileged_requests() {
-        let request = PrivilegedRequestEnvelope {
-            version: PRIVILEGED_PROTOCOL_VERSION,
-            session_id: "session".into(),
-            nonce: "one".into(),
-            request: PrivilegedRequest::Status,
-        };
+        let request = status_request("session", "one", PRIVILEGED_PROTOCOL_VERSION);
         let mut tracker = PrivilegedNonceTracker::default();
         assert!(tracker.accept(&request).is_ok());
         assert_eq!(tracker.accept(&request), Err("replayed_request"));
+    }
+
+    #[test]
+    fn rejects_wrong_protocol_version() {
+        let mut tracker = PrivilegedNonceTracker::default();
+        let request = status_request("session", "nonce", PRIVILEGED_PROTOCOL_VERSION + 1);
+        assert_eq!(tracker.accept(&request), Err("unsupported_protocol"));
+    }
+
+    #[test]
+    fn rejects_missing_identity_fields() {
+        let mut tracker = PrivilegedNonceTracker::default();
+        assert_eq!(
+            tracker.accept(&status_request("", "nonce", PRIVILEGED_PROTOCOL_VERSION)),
+            Err("missing_request_identity")
+        );
+        assert_eq!(
+            tracker.accept(&status_request("session", "", PRIVILEGED_PROTOCOL_VERSION)),
+            Err("missing_request_identity")
+        );
+    }
+
+    #[test]
+    fn rejects_oversized_identity_fields() {
+        let mut tracker = PrivilegedNonceTracker::default();
+        let too_long = "x".repeat(129);
+        assert_eq!(
+            tracker.accept(&status_request(&too_long, "nonce", PRIVILEGED_PROTOCOL_VERSION)),
+            Err("request_identity_too_long")
+        );
+    }
+
+    #[test]
+    fn rejects_empty_and_oversized_messages() {
+        assert!(decode_privileged_request(&[]).is_err());
+        let oversized = vec![b'x'; MAX_IPC_MESSAGE_BYTES + 1];
+        assert!(decode_privileged_request(&oversized).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_json_fields() {
+        let json = br#"{
+            "version":1,
+            "session_id":"session",
+            "nonce":"nonce",
+            "request":{"type":"status"},
+            "unexpected":"value"
+        }"#;
+        assert!(decode_privileged_request(json).is_err());
     }
 }
