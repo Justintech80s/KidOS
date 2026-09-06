@@ -323,9 +323,9 @@ fn is_media_download(file_name: &str) -> bool {
 
 #[cfg(target_os = "windows")]
 fn quarantine_destination(file_name: &str) -> Result<PathBuf, String> {
-    let base = std::env::var_os("LOCALAPPDATA")
+    let base = std::env::var_os("PROGRAMDATA")
         .map(PathBuf::from)
-        .ok_or_else(|| "KidOS could not resolve its local safety folder.".to_string())?;
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
     let directory = base.join("KidOS").join("Quarantine").join("Pending");
     fs::create_dir_all(&directory)
         .map_err(|_| "KidOS could not create its media quarantine folder.".to_string())?;
@@ -441,6 +441,46 @@ fn browser_download_allowed(
         "block" => Err("KidOS Guardian blocked this download.".into()),
         _ => Err("KidOS Guardian returned an invalid download decision.".into()),
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QuarantineItemDto {
+    id: String,
+    file_name: String,
+    size_bytes: u64,
+    modified_seconds: u64,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn list_quarantine_media(pin: String) -> Result<Vec<QuarantineItemDto>, String> {
+    guardian_ipc::list_quarantine(pin).map(|items| {
+        items.into_iter().map(|item| QuarantineItemDto {
+            id: item.id,
+            file_name: item.file_name,
+            size_bytes: item.size_bytes,
+            modified_seconds: item.modified_seconds,
+        }).collect()
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn list_quarantine_media(_pin: String) -> Result<Vec<QuarantineItemDto>, String> {
+    Err("KidOS quarantine review is currently available in the Windows build.".into())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn review_quarantine_media(pin: String, item_id: String, action: String) -> Result<(), String> {
+    guardian_ipc::review_quarantine(pin, item_id, action)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn review_quarantine_media(_pin: String, _item_id: String, _action: String) -> Result<(), String> {
+    Err("KidOS quarantine review is currently available in the Windows build.".into())
 }
 
 #[cfg(target_os = "windows")]
@@ -869,6 +909,8 @@ pub fn run() {
             evaluate_navigation_with_parent_policy,
             evaluate_download_with_parent_policy,
             open_protected_browser,
+            list_quarantine_media,
+            review_quarantine_media,
             plan_workspace,
             evaluate_navigation,
             evaluate_download,
