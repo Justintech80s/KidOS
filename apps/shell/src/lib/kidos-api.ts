@@ -9,6 +9,15 @@ export interface ConfigureWindowsLockdownRequest {
   approvedApps: readonly ApprovedDesktopApp[];
 }
 
+export interface QuarantineItem {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  modifiedSeconds: number;
+}
+
+export type QuarantineAction = 'approve' | 'delete' | 'keep_blocked';
+
 export interface ParentVerification {
   authorized: boolean;
   locked: boolean;
@@ -27,6 +36,8 @@ export interface KidOSApi {
   configureWindowsLockdown(request: ConfigureWindowsLockdownRequest): Promise<LockdownStatus>;
   requestParentMaintenanceUnlock(pin: string, durationMinutes: number): Promise<ParentUnlockGrant>;
   removeWindowsLockdown(pin: string): Promise<LockdownStatus>;
+  listQuarantineMedia?(pin: string): Promise<QuarantineItem[]>;
+  reviewQuarantineMedia?(pin: string, itemId: string, action: QuarantineAction): Promise<void>;
 }
 
 export const tauriKidOSApi: KidOSApi = {
@@ -42,4 +53,6 @@ export const tauriKidOSApi: KidOSApi = {
   configureWindowsLockdown(request) { return invoke<LockdownStatus>('configure_windows_lockdown', { request }); },
   requestParentMaintenanceUnlock(pin, durationMinutes) { return invoke<ParentUnlockGrant>('request_parent_maintenance_unlock', { pin, durationMinutes }); },
   removeWindowsLockdown(pin) { return invoke<LockdownStatus>('remove_windows_lockdown', { pin }); },
+  listQuarantineMedia(pin) { return invoke<QuarantineItem[]>('list_quarantine_media', { pin }); },
+  reviewQuarantineMedia(pin, itemId, action) { return invoke<void>('review_quarantine_media', { pin, itemId, action }); },
 };
