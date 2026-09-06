@@ -1,0 +1,82 @@
+name: KidOS Free Windows Hardening
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '31 10 * * 6'
+
+jobs:
+  windows-hardening:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Package local AI classifier and model
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "services/media-classifier[packaging]"
+          python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openai/clip-vit-base-patch32', local_dir='services/media-classifier/dist/model')"
+          Push-Location services/media-classifier
+          pyinstaller --clean --noconfirm kidos-media-classifier.spec
+          Pop-Location
+
+      - name: Build Guardian
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Build KidOS installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+
+      - name: Install KidOS
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $p = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "KidOS install failed: $($p.ExitCode)" }
+
+      - name: Security regression checks
+        shell: pwsh
+        run: ./tests/windows/security-regression.ps1
+
+      - name: Protection soak test
+        shell: pwsh
+        run: ./tests/windows/protection-soak.ps1 -Minutes 15 -IntervalSeconds 10
+
+      - name: Simulate service failures and recover
+        shell: pwsh
+        run: |
+          Stop-Service KidOSGuardian -Force
+          Start-Sleep -Seconds 2
+          & "$env:ProgramFiles\KidOS\Recovery\kidos-recovery.ps1"
+          if ((Get-Service KidOSGuardian).Status -ne "Running") { throw "Guardian recovery failed." }
+
+          Stop-Service KidOSMediaClassifier -Force
+          Start-Sleep -Seconds 2
+          & "$env:ProgramFiles\KidOS\Recovery\kidos-recovery.ps1"
+          if ((Get-Service KidOSMediaClassifier).Status -ne "Running") { throw "Classifier recovery failed." }
+
+      - name: Run security regression checks again
+        shell: pwsh
+        run: ./tests/windows/security-regression.ps1
+
+      - name: Upload hardening result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Free-Windows-Hardening
+          path: |
+            C:\ProgramData\KidOS\Guardian\recovery.log
+          if-no-files-found: ignore
