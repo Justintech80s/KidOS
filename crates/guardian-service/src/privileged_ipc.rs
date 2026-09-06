@@ -60,6 +60,8 @@ pub enum PrivilegedRequest {
         item_id: String,
         action: String,
     },
+    RecoveryStatus,
+    RunRecovery { pin: String, action: String },
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
@@ -95,6 +97,14 @@ pub enum PrivilegedResponse {
     QuarantinePreview {
         mime_type: String,
         data_base64: String,
+    },
+    RecoveryStatus {
+        guardian_healthy: bool,
+        classifier_healthy: bool,
+        recovery_required: bool,
+        recovery_reason: Option<String>,
+        policy_valid: bool,
+        lockdown_state: String,
     },
     Ack { message: String },
     Error { code: String, message: String },
