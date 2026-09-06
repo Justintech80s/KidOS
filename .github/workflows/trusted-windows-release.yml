@@ -51,6 +51,20 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
+      - name: Require production validation gates
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $clean = gh run list --workflow "KidOS Clean Windows VM CI" --commit $sha --status success --limit 1 --json databaseId,headSha,conclusion | ConvertFrom-Json
+          if (-not $clean -or $clean.Count -eq 0 -or $clean[0].headSha -ne $sha) {
+            throw "Trusted release blocked: KidOS Clean Windows VM CI has not passed for commit $sha."
+          }
+          $interactive = gh run list --workflow "KidOS Interactive Windows Session Validation" --commit $sha --status success --limit 1 --json databaseId,headSha,conclusion | ConvertFrom-Json
+          if (-not $interactive -or $interactive.Count -eq 0 -or $interactive[0].headSha -ne $sha) {
+            throw "Trusted release blocked: the real rebooted child-session validation has not passed for commit $sha."
+          }
+          Write-Host "Production validation gates passed: clean VM run $($clean[0].databaseId), interactive run $($interactive[0].databaseId)."
+
       - name: Require trusted signing credentials
         shell: pwsh
         run: |
@@ -64,6 +78,7 @@ jobs:
         shell: pwsh
         run: |
           node tests/packaging/tauri-config.test.mjs
+          node tests/security/release-hardening.test.mjs
           pnpm -r test --run
           pnpm -r build
           cargo test --workspace
