@@ -29,6 +29,9 @@ jobs:
         run: node tests/packaging/tauri-config.test.mjs
       - name: Verify production hardening invariants
         run: node tests/security/release-hardening.test.mjs
+      - name: Verify Windows PowerShell 5.1 installer credentials
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\tests\windows\installer-credential-compat.ps1
       - name: Run JavaScript tests
         run: pnpm -r test --run
       - name: Build JavaScript workspaces
