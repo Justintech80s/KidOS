@@ -92,6 +92,7 @@ pub fn status() -> Result<(String, Option<String>), String> {
     match send(PrivilegedRequest::Status)? {
         PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
         PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected status response.".into()),
     }
 }
 
@@ -102,6 +103,7 @@ pub fn apply(profile: &LockdownProfile) -> Result<(String, Option<String>), Stri
     })? {
         PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
         PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected lockdown response.".into()),
     }
 }
 
