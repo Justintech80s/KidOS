@@ -151,6 +151,12 @@ jobs:
             target/release/KidOS-SHA256SUMS.txt
             target/release/KidOS-update-manifest.json
 
+      - name: Verify published provenance and SBOM attestations
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          ./scripts/release/verify-attestations.ps1 -InstallerPath $installer -Repository "${{ github.repository }}"
+
       - name: Upload trusted release artifact
         uses: actions/upload-artifact@v4
         with:
