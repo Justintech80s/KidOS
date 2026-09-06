@@ -23,6 +23,8 @@ assert.match(hooks, /KidOS Guardian Recovery/, 'Installer must register the reco
 assert.match(hooks, /\/RU SYSTEM/, 'Recovery task must run under SYSTEM.');
 assert.match(hooks, /publisher-thumbprint\.txt/, 'Signed production installs must pin their Windows publisher certificate.');
 assert.doesNotMatch(hooks, /AutoAdminLogon|DefaultPassword/, 'Production installer must never enable Windows automatic logon.');
+assert.doesNotMatch(hooks, /\[Convert\]::ToHexString/, 'Installer credential generation must remain compatible with Windows PowerShell 5.1.');
+assert.match(hooks, /BitConverter\]::ToString\(\$b\).*Replace\(''-'',''''\).*ToLowerInvariant/s, 'Installer must generate the 256-bit Guardian token using a Windows PowerShell 5.1-compatible hex conversion.');
 
 assert.match(browserHost, /matches!\(url\.scheme\(\), "https" \| "http"\)/, 'Safe Browser must restrict navigations to HTTP(S).');
 assert.match(browserHost, /NewWindowResponse::Deny/, 'Safe Browser must deny uncontrolled popup windows.');
