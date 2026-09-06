@@ -43,9 +43,15 @@ describe('LockdownSettings', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/restricted safe mode/i);
   });
 
-  it('shows maintenance unlock expiry', async () => {
+  it('requires a parent PIN before maintenance unlock and shows the expiry', async () => {
     render(<LockdownSettings authorized api={api} initialStatus={{ state: 'locked', capability }} />);
     fireEvent.click(screen.getByRole('button', { name: /maintenance unlock/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/enter the parent pin/i);
+    expect(api.requestParentMaintenanceUnlock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/parent pin for sensitive changes/i), { target: { value: '2468' } });
+    fireEvent.click(screen.getByRole('button', { name: /maintenance unlock/i }));
     expect(await screen.findByRole('status')).toHaveTextContent(/expires/i);
+    expect(api.requestParentMaintenanceUnlock).toHaveBeenCalledWith('2468', 15);
   });
 });
