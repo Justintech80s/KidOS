@@ -486,6 +486,56 @@ struct QuarantinePreviewDto {
     data_base64: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryStatusDto {
+    guardian_healthy: bool,
+    classifier_healthy: bool,
+    recovery_required: bool,
+    recovery_reason: Option<String>,
+    policy_valid: bool,
+    lockdown_state: String,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_recovery_status() -> Result<RecoveryStatusDto, String> {
+    let status = guardian_ipc::recovery_status()?;
+    Ok(RecoveryStatusDto {
+        guardian_healthy: status.guardian_healthy,
+        classifier_healthy: status.classifier_healthy,
+        recovery_required: status.recovery_required,
+        recovery_reason: status.recovery_reason,
+        policy_valid: status.policy_valid,
+        lockdown_state: status.lockdown_state,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn get_recovery_status() -> Result<RecoveryStatusDto, String> {
+    Ok(RecoveryStatusDto {
+        guardian_healthy: false,
+        classifier_healthy: false,
+        recovery_required: false,
+        recovery_reason: Some("KidOS Windows recovery controls are unavailable on this platform.".into()),
+        policy_valid: true,
+        lockdown_state: "unmanaged".into(),
+    })
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn run_parent_recovery(pin: String, action: String) -> Result<String, String> {
+    guardian_ipc::run_recovery(pin, action)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn run_parent_recovery(_pin: String, _action: String) -> Result<String, String> {
+    Err("KidOS Windows recovery controls are unavailable on this platform.".into())
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn preview_quarantine_media(pin: String, item_id: String) -> Result<QuarantinePreviewDto, String> {
@@ -940,6 +990,8 @@ pub fn run() {
             list_quarantine_media,
             preview_quarantine_media,
             review_quarantine_media,
+            get_recovery_status,
+            run_parent_recovery,
             plan_workspace,
             evaluate_navigation,
             evaluate_download,
