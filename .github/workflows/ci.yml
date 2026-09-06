@@ -7,6 +7,9 @@ on:
       - main
       - 'feat/task-11-windows-packaging'
 
+permissions:
+  contents: write
+
 jobs:
   windows-release:
     runs-on: windows-latest
@@ -55,3 +58,27 @@ jobs:
           name: KidOS-Windows-10-11-x64-Experimental
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
+      - name: Prepare one-click experimental installer
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $source = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $destination = "target/release/KidOS-Windows-10-11-x64-Experimental.exe"
+          Copy-Item $source $destination -Force
+
+      - name: Publish one-click experimental download
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "experimental-latest"
+          $asset = "target/release/KidOS-Windows-10-11-x64-Experimental.exe"
+
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete $tag --repo "${{ github.repository }}" --yes --cleanup-tag
+          }
+
+          gh release create $tag $asset --repo "${{ github.repository }}" --title "KidOS Experimental Windows Build" --prerelease --notes "EXPERIMENTAL SOFTWARE. Use only in a VM, disposable Windows account, or device/account with no important files. This unsigned test build is for Windows 10/11 x64 and is not a production release."
+
