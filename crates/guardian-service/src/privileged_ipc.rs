@@ -52,6 +52,7 @@ pub enum PrivilegedRequest {
         high_confidence: bool,
         classifier_available: bool,
     },
+    ClassifyMediaFile { path: String },
     ApplyLockdown { profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
@@ -73,6 +74,14 @@ pub enum PrivilegedResponse {
     ParentVerification { authorized: bool, locked: bool },
     ParentPolicy { policy: ParentPolicyConfig },
     PolicyDecision { decision: String },
+    MediaClassification {
+        decision: String,
+        category: String,
+        risk: String,
+        confidence: f32,
+        high_confidence: bool,
+        frames_checked: u32,
+    },
     Ack { message: String },
     Error { code: String, message: String },
 }
