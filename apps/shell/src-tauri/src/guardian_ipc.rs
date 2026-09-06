@@ -265,3 +265,47 @@ pub fn preview_quarantine(pin: String, item_id: String) -> Result<(String, Strin
         _ => Err("Guardian returned an unexpected quarantine-preview response.".into()),
     }
 }
+
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+pub struct RecoveryStatus {
+    pub guardian_healthy: bool,
+    pub classifier_healthy: bool,
+    pub recovery_required: bool,
+    pub recovery_reason: Option<String>,
+    pub policy_valid: bool,
+    pub lockdown_state: String,
+}
+
+#[cfg(target_os = "windows")]
+pub fn recovery_status() -> Result<RecoveryStatus, String> {
+    match send(PrivilegedRequest::RecoveryStatus)? {
+        PrivilegedResponse::RecoveryStatus {
+            guardian_healthy,
+            classifier_healthy,
+            recovery_required,
+            recovery_reason,
+            policy_valid,
+            lockdown_state,
+        } => Ok(RecoveryStatus {
+            guardian_healthy,
+            classifier_healthy,
+            recovery_required,
+            recovery_reason,
+            policy_valid,
+            lockdown_state,
+        }),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected recovery-status response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn run_recovery(pin: String, action: String) -> Result<String, String> {
+    match send(PrivilegedRequest::RunRecovery { pin, action })? {
+        PrivilegedResponse::Ack { message } => Ok(message),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected recovery response.".into()),
+    }
+}
