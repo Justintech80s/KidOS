@@ -7,6 +7,10 @@
   File /oname=kidos-guardian-host.exe "${KIDOS_HOOK_DIR}\..\..\..\..\target\release\kidos-guardian-host.exe"
   File /oname=provision-guardian-credentials.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\provision-guardian-credentials.ps1"
   File /oname=install-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\install-kidos-services.ps1"
+  File /oname=stop-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\stop-kidos-services.ps1"
+  File /oname=verify-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-kidos-services.ps1"
+  File /oname=hash-recovery-installer.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\hash-recovery-installer.ps1"
+  File /oname=verify-restore-result.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-restore-result.ps1"
 
   ; Stage recovery before any fallible setup step so partial installs remain recoverable.
   SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
@@ -21,7 +25,7 @@
 
   ; Replace older KidOS services during upgrades. On a first install there is
   ; nothing to remove, so do this quietly instead of showing harmless SC 1060 errors.
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$names=@(''KidOSMediaClassifier'',''KidOSGuardian''); foreach($name in $names){ $svc=Get-Service -Name $name -ErrorAction SilentlyContinue; if($null -ne $svc){ if($svc.Status -ne ''Stopped''){ Stop-Service -Name $name -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 300 }; & $env:SystemRoot\System32\sc.exe delete $name | Out-Null } }"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\stop-kidos-services.ps1"'
   Sleep 1000
 
   ; Protect service binaries and model files so a standard child account cannot replace them.
@@ -54,7 +58,7 @@
   ${EndIf}
 
   Sleep 2500
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ((Get-Service -Name KidOSGuardian -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 20 }; if ((Get-Service -Name KidOSMediaClassifier -ErrorAction Stop).Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) { exit 21 }; $token=Get-Content ($env:ProgramData+''\KidOS\Guardian\media-classifier.token'') -Raw; $ok=$false; for($i=0;$i -lt 45;$i++){ try { $r=Invoke-RestMethod -Uri ''http://127.0.0.1:8765/health'' -Headers @{''x-kidos-classifier-token''=$token} -TimeoutSec 3; if($r.status -eq ''healthy''){ $ok=$true; break } } catch {}; Start-Sleep -Seconds 2 }; if(-not $ok){ exit 22 }"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\verify-kidos-services.ps1"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -81,9 +85,9 @@
   CreateDirectory "$PROGRAMDATA\KidOS\Recovery\Previous"
   IfFileExists "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" 0 +4
     CopyFiles /SILENT "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe"
-    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "(Get-FileHash -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe'' -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.sha256'' -NoNewline -Encoding ASCII"'
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1" -InstallerPath "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe" -HashPath "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.sha256"'
   CopyFiles /SILENT "$EXEPATH" "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe"
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "(Get-FileHash -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe'' -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.sha256'' -NoNewline -Encoding ASCII"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1" -InstallerPath "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" -HashPath "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.sha256"'
   nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$PROGRAMDATA\KidOS\Recovery" /inheritance:r /grant:r "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)"'
 
   DetailPrint "KidOS Guardian and local media classifier are installed and running."
@@ -115,7 +119,7 @@
   Sleep 5000
   IfFileExists "$PROGRAMDATA\KidOS\Recovery\restore-windows.result" +2 0
     Abort
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$r=(Get-Content -LiteralPath ''$env:ProgramData\KidOS\Recovery\restore-windows.result'' -Raw); if($r -ne ''restored''){ exit 40 }"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\verify-restore-result.ps1"'
   Pop $0
   Pop $1
   ${If} $0 != 0
