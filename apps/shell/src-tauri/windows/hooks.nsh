@@ -6,6 +6,13 @@
   SetOutPath "$PROGRAMFILES64\KidOS\Guardian"
   File /oname=kidos-guardian-host.exe "${KIDOS_HOOK_DIR}\..\..\..\..\target\release\kidos-guardian-host.exe"
   File /oname=provision-guardian-credentials.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\provision-guardian-credentials.ps1"
+  File /oname=install-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\install-kidos-services.ps1"
+
+  ; Stage recovery before any fallible setup step so partial installs remain recoverable.
+  SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
+  File /oname=kidos-recovery.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\kidos-recovery.ps1"
+  File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
+  File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
 
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier"
   File /oname=kidos-media-classifier.exe "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier.exe"
@@ -36,42 +43,13 @@
     Abort
   ${EndIf}
 
-  nsExec::ExecToStack '"$SYSDIR\sc.exe" create KidOSMediaClassifier binPath= "$\"$PROGRAMFILES64\KidOS\MediaClassifier\kidos-media-classifier.exe$\"" start= auto obj= LocalSystem DisplayName= "KidOS Media Classifier"'
+  ; Register/start services through a standalone PowerShell 5.1 script.
+  ; This avoids fragile nested NSIS/sc.exe quoting and cleans up on failure.
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\install-kidos-services.ps1" -GuardianExe "$PROGRAMFILES64\KidOS\Guardian\kidos-guardian-host.exe" -ClassifierExe "$PROGRAMFILES64\KidOS\MediaClassifier\kidos-media-classifier.exe"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not register the local media-classifier service. Installation will stop."
-    Abort
-  ${EndIf}
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" description KidOSMediaClassifier "Local KidOS image and video safety classification service."'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" failure KidOSMediaClassifier reset= 86400 actions= restart/5000/restart/5000/restart/5000'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" failureflag KidOSMediaClassifier 1'
-
-  nsExec::ExecToStack '"$SYSDIR\sc.exe" create KidOSGuardian binPath= "$\"$PROGRAMFILES64\KidOS\Guardian\kidos-guardian-host.exe$\"" start= auto obj= LocalSystem DisplayName= "KidOS Guardian"'
-  Pop $0
-  Pop $1
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not register the Guardian Windows service. Installation will stop."
-    Abort
-  ${EndIf}
-
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" description KidOSGuardian "Privileged KidOS Guardian service for Windows safety and Assigned Access enforcement."'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" failure KidOSGuardian reset= 86400 actions= restart/5000/restart/5000/restart/5000'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" failureflag KidOSGuardian 1'
-
-  nsExec::ExecToStack '"$SYSDIR\sc.exe" start KidOSMediaClassifier'
-  Pop $0
-  Pop $1
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS Media Classifier could not start. Installation will stop."
-    Abort
-  ${EndIf}
-
-  nsExec::ExecToStack '"$SYSDIR\sc.exe" start KidOSGuardian'
-  Pop $0
-  Pop $1
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS Guardian could not start. Installation will stop so KidOS is not left without protection."
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not register/start its Windows protection services. Installation will stop."
     Abort
   ${EndIf}
 
