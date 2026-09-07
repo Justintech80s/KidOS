@@ -86,6 +86,8 @@
 
   SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
   File /oname=kidos-recovery.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\kidos-recovery.ps1"
+  File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
+  File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
   nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Guardian Recovery" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1$\"" /F'
   Pop $0
@@ -95,10 +97,55 @@
     Abort
   ${EndIf}
 
+  ; Cache the successfully installed package in a SYSTEM/administrator-only recovery area.
+  ; On an upgrade, move the last known-good package to Previous before recording the new one.
+  CreateDirectory "$PROGRAMDATA\KidOS\Recovery\Current"
+  CreateDirectory "$PROGRAMDATA\KidOS\Recovery\Previous"
+  IfFileExists "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" 0 +4
+    CopyFiles /SILENT "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe"
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "(Get-FileHash -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe'' -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.sha256'' -NoNewline -Encoding ASCII"'
+  CopyFiles /SILENT "$EXEPATH" "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe"
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "(Get-FileHash -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe'' -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath ''$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.sha256'' -NoNewline -Encoding ASCII"'
+  nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$PROGRAMDATA\KidOS\Recovery" /inheritance:r /grant:r "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)"'
+
   DetailPrint "KidOS Guardian and local media classifier are installed and running."
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  DetailPrint "Restoring the Windows child account before removing KidOS..."
+
+  ; Run Assigned Access removal as SYSTEM. This deliberately happens before
+  ; Guardian is removed so an uninstall cannot leave the child account locked.
+  Delete "$PROGRAMDATA\KidOS\Recovery\restore-windows.result"
+  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
+  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Restore Windows Account" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\restore-windows-account.ps1$\"" /F'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not create its Windows recovery task. Uninstall will stop to avoid leaving the child account locked."
+    Abort
+  ${EndIf}
+  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Run /TN "KidOS Restore Windows Account"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not start Windows account recovery. Uninstall will stop."
+    Abort
+  ${EndIf}
+
+  ; Give the SYSTEM task time to remove Assigned Access and write its result.
+  Sleep 5000
+  IfFileExists "$PROGRAMDATA\KidOS\Recovery\restore-windows.result" +2 0
+    Abort
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$r=(Get-Content -LiteralPath ''$env:ProgramData\KidOS\Recovery\restore-windows.result'' -Raw); if($r -ne ''restored''){ exit 40 }"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not verify that Windows lockdown was removed. Uninstall will stop."
+    Abort
+  ${EndIf}
+  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
+
   DetailPrint "Stopping KidOS protection services..."
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
   nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSMediaClassifier'
