@@ -13,6 +13,9 @@ const lockdownConfig = read('crates/guardian-service/src/windows_lockdown/config
 const guardianIpc = read('crates/guardian-host/src/ipc_server.rs');
 const updater = read('crates/guardian-host/src/updater.rs');
 const recovery = read('scripts/windows/kidos-recovery.ps1');
+const provision = read('scripts/windows/provision-guardian-credentials.ps1');
+const restoreWindows = read('scripts/windows/restore-windows-account.ps1');
+const rollback = read('scripts/windows/rollback-kidos.ps1');
 
 assert.equal(tauri.bundle?.windows?.nsis?.installMode, 'perMachine', 'KidOS must install per-machine with administrator approval.');
 assert.match(tauri.app?.security?.csp ?? '', /default-src 'self'/, 'KidOS must have an explicit CSP.');
@@ -65,5 +68,16 @@ assert.match(updater, /verify_staged_installer\(&manifest, &installer\)\?[\s\S]*
 
 assert.match(recovery, /Start-Service \$guardian/, 'Recovery must attempt to restore Guardian after service failure.');
 assert.match(recovery, /classifier-service-failed/, 'Classifier failure must be tracked without silently weakening media safety.');
+
+assert.match(hooks, /KidOS Restore Windows Account/, 'Uninstall must restore Assigned Access before removing KidOS services.');
+assert.match(restoreWindows, /MDM_AssignedAccess/, 'Windows recovery must explicitly remove the Assigned Access configuration.');
+assert.match(restoreWindows, /WindowsIdentity.*IsSystem/s, 'Assigned Access recovery must require LocalSystem.');
+assert.doesNotMatch(restoreWindows, /Users\\|Documents\\|Desktop\\|OneDrive\\/i, 'Recovery must not delete or rewrite user profile files.');
+assert.match(hooks, /KidOS-current\.exe/, 'A successful install must cache the current installer for recovery.');
+assert.match(hooks, /KidOS-previous\.exe/, 'An upgrade must preserve the previous installer as last-known-good.');
+assert.match(rollback, /Get-FileHash.*SHA256/s, 'Rollback must verify the cached previous installer before execution.');
+assert.match(rollback, /KidOS-previous\.sha256/, 'Rollback must require the protected previous-installer hash record.');
+assert.match(rollback, /ArgumentList '\/S'/, 'Rollback must run the verified previous installer in controlled silent mode.');
+assert.doesNotMatch(hooks, /\$PROFILE|\\Users\\|\\Documents\\|\\Desktop\\/i, 'Installer cleanup must stay outside personal Windows profile locations.');
 
 console.log('KidOS production hardening regression checks passed.');
