@@ -17,6 +17,7 @@ const recovery = read('scripts/windows/kidos-recovery.ps1');
 const provision = read('scripts/windows/provision-guardian-credentials.ps1');
 const restoreWindows = read('scripts/windows/restore-windows-account.ps1');
 const rollback = read('scripts/windows/rollback-kidos.ps1');
+const partialRollback = read('scripts/windows/rollback-partial-install.ps1');
 
 assert.equal(tauri.bundle?.windows?.nsis?.installMode, 'perMachine', 'KidOS must install per-machine with administrator approval.');
 assert.match(tauri.app?.security?.csp ?? '', /default-src 'self'/, 'KidOS must have an explicit CSP.');
@@ -36,6 +37,17 @@ assert.doesNotMatch(hooks, /AutoAdminLogon|DefaultPassword/, 'Production install
 assert.match(hooks, /File \/oname=provision-guardian-credentials\.ps1/, 'Installer must bundle the standalone Guardian credential provisioner.');
 assert.match(hooks, /-File .*provision-guardian-credentials\.ps1/, 'Installer must execute Guardian provisioning with PowerShell -File.');
 assert.doesNotMatch(hooks, /\[Convert\]::ToHexString/, 'Installer must not rely on newer .NET-only Convert.ToHexString.');
+assert.doesNotMatch(hooks, /powershell\.exe[^\r\n]*-Command/i, 'NSIS hooks must not embed inline PowerShell -Command scripts.');
+
+assert.match(hooks, /File \/oname=rollback-partial-install\.ps1/, 'Installer must bundle a partial-install rollback script.');
+assert.match(hooks, /rollback-partial-install\.ps1/g, 'Installer failure paths must invoke partial-install rollback.');
+assert.match(partialRollback, /KidOSMediaClassifier/, 'Partial rollback must remove the classifier service.');
+assert.match(partialRollback, /KidOSGuardian/, 'Partial rollback must remove the Guardian service.');
+assert.match(partialRollback, /KidOS Guardian Recovery/, 'Partial rollback must remove the recovery task if it was registered.');
+assert.doesNotMatch(partialRollback, /Users\\|Documents\\|Desktop\\|OneDrive\\/i, 'Partial rollback must never touch personal profile files.');
+assert.match(hooks, /\$PLUGINSDIR\\KidOSRecovery/, 'Uninstaller must extract recovery scripts from its own payload instead of depending on a complete prior install.');
+assert.match(hooks, /File \/oname=restore-windows-account\.ps1/, 'Uninstaller must carry its own Windows restore script.');
+assert.match(hooks, /File \/oname=verify-restore-result\.ps1/, 'Uninstaller must carry its own restore verification script.');
 
 assert.match(provisioning, /RandomNumberGenerator\]::Create\(\)/, 'Guardian provisioning must generate cryptographically random credentials.');
 assert.match(provisioning, /New-Object byte\[\] 32/, 'Guardian provisioning must generate a 256-bit token.');
