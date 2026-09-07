@@ -67,12 +67,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = "Stop"
           $tag = "experimental-latest"
           $asset = "target/release/KidOS-Windows-10-11-x64-Experimental.exe"
+          $repo = "${{ github.repository }}"
+          $notes = "EXPERIMENTAL SOFTWARE. Use only in a VM, disposable Windows account, or device/account with no important files. This unsigned test build is for Windows 10/11 x64 and is not a production release."
 
-          gh release view $tag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release delete $tag --repo "${{ github.repository }}" --yes --cleanup-tag
+          gh release view $tag --repo $repo *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $repo --title "KidOS Experimental Windows Build" --prerelease --notes $notes
+          } else {
+            gh release edit $tag --repo $repo --title "KidOS Experimental Windows Build" --prerelease --notes $notes
           }
 
-          gh release create $tag $asset --repo "${{ github.repository }}" --title "KidOS Experimental Windows Build" --prerelease --notes "EXPERIMENTAL SOFTWARE. Use only in a VM, disposable Windows account, or device/account with no important files. This unsigned test build is for Windows 10/11 x64 and is not a production release."
+          gh release upload $tag $asset --repo $repo --clobber
