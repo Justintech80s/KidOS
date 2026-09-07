@@ -8,6 +8,7 @@ function read(path) {
 const tauri = JSON.parse(read('apps/shell/src-tauri/tauri.conf.json'));
 const hooks = read('apps/shell/src-tauri/windows/hooks.nsh');
 const provisioning = read('scripts/windows/provision-guardian-credentials.ps1');
+const serviceInstaller = read('scripts/windows/install-kidos-services.ps1');
 const browserHost = read('apps/shell/src-tauri/src/lib.rs');
 const lockdownConfig = read('crates/guardian-service/src/windows_lockdown/config.rs');
 const guardianIpc = read('crates/guardian-host/src/ipc_server.rs');
@@ -21,7 +22,13 @@ assert.equal(tauri.bundle?.windows?.nsis?.installMode, 'perMachine', 'KidOS must
 assert.match(tauri.app?.security?.csp ?? '', /default-src 'self'/, 'KidOS must have an explicit CSP.');
 assert.doesNotMatch(tauri.app?.security?.csp ?? '', /default-src \*/, 'KidOS CSP must not allow every source.');
 
-assert.match(hooks, /obj= LocalSystem/, 'Privileged KidOS services must run as LocalSystem.');
+assert.match(hooks, /File \/oname=install-kidos-services\.ps1/, 'Installer must bundle the standalone service installer.');
+assert.match(hooks, /-File .*install-kidos-services\.ps1/, 'Installer must execute service registration with PowerShell -File.');
+assert.match(serviceInstaller, /sc\.exe" config KidOSMediaClassifier obj= LocalSystem/, 'KidOS Media Classifier must be explicitly configured as LocalSystem.');
+assert.match(serviceInstaller, /sc\.exe" config KidOSGuardian obj= LocalSystem/, 'KidOS Guardian must be explicitly configured as LocalSystem.');
+assert.match(serviceInstaller, /-StartupType Automatic/, 'KidOS protection services must start automatically.');
+assert.match(serviceInstaller, /Remove-ServiceIfPresent 'KidOSMediaClassifier'/, 'Failed service setup must clean up the media-classifier service.');
+assert.match(serviceInstaller, /Remove-ServiceIfPresent 'KidOSGuardian'/, 'Failed service setup must clean up the Guardian service.');
 assert.match(hooks, /icacls\.exe/, 'Installer must harden KidOS service directories.');
 assert.match(hooks, /KidOS Guardian Recovery/, 'Installer must register the recovery task.');
 assert.match(hooks, /\/RU SYSTEM/, 'Recovery task must run under SYSTEM.');
