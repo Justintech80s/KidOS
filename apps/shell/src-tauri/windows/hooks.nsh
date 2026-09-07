@@ -5,6 +5,7 @@
 
   SetOutPath "$PROGRAMFILES64\KidOS\Guardian"
   File /oname=kidos-guardian-host.exe "${KIDOS_HOOK_DIR}\..\..\..\..\target\release\kidos-guardian-host.exe"
+  File /oname=provision-guardian-credentials.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\provision-guardian-credentials.ps1"
 
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier"
   File /oname=kidos-media-classifier.exe "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier.exe"
@@ -25,9 +26,9 @@
     Abort
   ${EndIf}
 
-  ; Generate a private 256-bit classifier token using APIs available in Windows PowerShell 5.1,
-  ; pin the trusted installer publisher when signed, and protect Guardian state under ProgramData.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$d=$env:ProgramData+''\KidOS\Guardian''; New-Item -ItemType Directory -Force -Path $d | Out-Null; $b=New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $t=([System.BitConverter]::ToString($b)).Replace(''-'','''').ToLowerInvariant(); Set-Content -Path ($d+''\media-classifier.token'') -Value $t -NoNewline -Encoding ASCII; $s=Get-AuthenticodeSignature -LiteralPath ''$EXEPATH''; if($s.Status -eq ''Valid'' -and $s.SignerCertificate){ Set-Content -Path ($d+''\publisher-thumbprint.txt'') -Value $s.SignerCertificate.Thumbprint -NoNewline -Encoding ASCII }; icacls $d /inheritance:r /grant:r ''SYSTEM:(OI)(CI)(F)'' ''Administrators:(OI)(CI)(F)'' | Out-Null"'
+  ; Provision protected Guardian credentials from a standalone PowerShell 5.1 script.
+  ; Keeping the logic out of an inline -Command avoids NSIS/PowerShell nested-quote parsing bugs.
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\provision-guardian-credentials.ps1" -InstallerPath "$EXEPATH"'
   Pop $0
   Pop $1
   ${If} $0 != 0
