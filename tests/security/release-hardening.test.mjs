@@ -7,6 +7,7 @@ function read(path) {
 
 const tauri = JSON.parse(read('apps/shell/src-tauri/tauri.conf.json'));
 const hooks = read('apps/shell/src-tauri/windows/hooks.nsh');
+const provisioning = read('scripts/windows/provision-guardian-credentials.ps1');
 const browserHost = read('apps/shell/src-tauri/src/lib.rs');
 const lockdownConfig = read('crates/guardian-service/src/windows_lockdown/config.rs');
 const guardianIpc = read('crates/guardian-host/src/ipc_server.rs');
@@ -21,10 +22,16 @@ assert.match(hooks, /obj= LocalSystem/, 'Privileged KidOS services must run as L
 assert.match(hooks, /icacls\.exe/, 'Installer must harden KidOS service directories.');
 assert.match(hooks, /KidOS Guardian Recovery/, 'Installer must register the recovery task.');
 assert.match(hooks, /\/RU SYSTEM/, 'Recovery task must run under SYSTEM.');
-assert.match(hooks, /publisher-thumbprint\.txt/, 'Signed production installs must pin their Windows publisher certificate.');
 assert.doesNotMatch(hooks, /AutoAdminLogon|DefaultPassword/, 'Production installer must never enable Windows automatic logon.');
-assert.doesNotMatch(hooks, /\[Convert\]::ToHexString/, 'Installer credential generation must remain compatible with Windows PowerShell 5.1.');
-assert.match(hooks, /BitConverter\]::ToString\(\$b\).*Replace\(''-'',''''\).*ToLowerInvariant/s, 'Installer must generate the 256-bit Guardian token using a Windows PowerShell 5.1-compatible hex conversion.');
+assert.match(hooks, /File \/oname=provision-guardian-credentials\.ps1/, 'Installer must bundle the standalone Guardian credential provisioner.');
+assert.match(hooks, /-File .*provision-guardian-credentials\.ps1/, 'Installer must execute Guardian provisioning with PowerShell -File.');
+assert.doesNotMatch(hooks, /\[Convert\]::ToHexString/, 'Installer must not rely on newer .NET-only Convert.ToHexString.');
+
+assert.match(provisioning, /RandomNumberGenerator\]::Create\(\)/, 'Guardian provisioning must generate cryptographically random credentials.');
+assert.match(provisioning, /New-Object byte\[\] 32/, 'Guardian provisioning must generate a 256-bit token.');
+assert.match(provisioning, /BitConverter\]::ToString\(\$bytes\).*Replace\('-', ''\).*ToLowerInvariant/s, 'Guardian provisioning must use a Windows PowerShell 5.1-compatible hex conversion.');
+assert.match(provisioning, /publisher-thumbprint\.txt/, 'Signed production installs must pin their Windows publisher certificate.');
+assert.match(provisioning, /icacls\.exe/, 'Guardian provisioning must protect its credential directory ACL.');
 
 assert.match(browserHost, /matches!\(url\.scheme\(\), "https" \| "http"\)/, 'Safe Browser must restrict navigations to HTTP(S).');
 assert.match(browserHost, /NewWindowResponse::Deny/, 'Safe Browser must deny uncontrolled popup windows.');
