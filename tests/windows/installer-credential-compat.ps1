@@ -42,6 +42,18 @@ try {
         throw 'Installer must invoke Guardian credential provisioning with PowerShell -File instead of inline -Command.'
     }
 
+    if ($hooks -notmatch 'install-kidos-services\.ps1') {
+        throw 'Installer must ship the standalone Windows service registration script.'
+    }
+    if ($hooks -match 'sc\.exe" create KidOSMediaClassifier') {
+        throw 'Installer still directly embeds fragile sc.exe service creation syntax.'
+    }
+    $recoveryIndex = $hooks.IndexOf('File /oname=restore-windows-account.ps1')
+    $credentialIndex = $hooks.IndexOf('provision-guardian-credentials.ps1" -InstallerPath')
+    if ($recoveryIndex -lt 0 -or $credentialIndex -lt 0 -or $recoveryIndex -gt $credentialIndex) {
+        throw 'Recovery payload must be staged before fallible Guardian provisioning begins.'
+    }
+
     Write-Host 'KidOS Guardian credential provisioning passed under Windows PowerShell 5.1.'
 } finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
