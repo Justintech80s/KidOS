@@ -1,5 +1,11 @@
 !define KIDOS_HOOK_DIR "${__FILEDIR__}"
 
+!macro KIDOS_ABORT_WITH_ROLLBACK MESSAGE
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\rollback-partial-install.ps1"'
+  MessageBox MB_ICONSTOP|MB_OK "${MESSAGE}"
+  Abort
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Installing KidOS Guardian and local media classifier..."
 
@@ -11,6 +17,7 @@
   File /oname=verify-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-kidos-services.ps1"
   File /oname=hash-recovery-installer.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\hash-recovery-installer.ps1"
   File /oname=verify-restore-result.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-restore-result.ps1"
+  File /oname=rollback-partial-install.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-partial-install.ps1"
 
   ; Stage recovery before any fallible setup step so partial installs remain recoverable.
   SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
@@ -33,28 +40,23 @@
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not secure the Guardian service directory. Installation will stop."
-    Abort
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not secure the Guardian service directory. Installation was rolled back."
   ${EndIf}
 
   ; Provision protected Guardian credentials from a standalone PowerShell 5.1 script.
-  ; Keeping the logic out of an inline -Command avoids NSIS/PowerShell nested-quote parsing bugs.
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\provision-guardian-credentials.ps1" -InstallerPath "$EXEPATH"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not provision its protected Guardian credentials. Installation will stop."
-    Abort
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not provision its protected Guardian credentials. Installation was rolled back."
   ${EndIf}
 
   ; Register/start services through a standalone PowerShell 5.1 script.
-  ; This avoids fragile nested NSIS/sc.exe quoting and cleans up on failure.
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\install-kidos-services.ps1" -GuardianExe "$PROGRAMFILES64\KidOS\Guardian\kidos-guardian-host.exe" -ClassifierExe "$PROGRAMFILES64\KidOS\MediaClassifier\kidos-media-classifier.exe"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not register/start its Windows protection services. Installation will stop."
-    Abort
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not register/start its Windows protection services. Installation was rolled back."
   ${EndIf}
 
   Sleep 2500
@@ -62,21 +64,15 @@
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS Guardian did not pass its startup health check. Installation will stop."
-    Abort
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS Guardian did not pass its startup health check. Installation was rolled back."
   ${EndIf}
 
-  SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
-  File /oname=kidos-recovery.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\kidos-recovery.ps1"
-  File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
-  File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
   nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Guardian Recovery" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1$\"" /F'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP|MB_OK "KidOS could not install its recovery health check. Installation will stop."
-    Abort
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not install its recovery health check. Installation was rolled back."
   ${EndIf}
 
   ; Cache the successfully installed package in a SYSTEM/administrator-only recovery area.
@@ -96,11 +92,15 @@
 !macro NSIS_HOOK_PREUNINSTALL
   DetailPrint "Restoring the Windows child account before removing KidOS..."
 
-  ; Run Assigned Access removal as SYSTEM. This deliberately happens before
-  ; Guardian is removed so an uninstall cannot leave the child account locked.
+  ; The uninstaller carries its own recovery payload so partial installations can
+  ; always be removed even if Program Files\KidOS\Recovery was never completed.
+  SetOutPath "$PLUGINSDIR\KidOSRecovery"
+  File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
+  File /oname=verify-restore-result.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-restore-result.ps1"
+
   Delete "$PROGRAMDATA\KidOS\Recovery\restore-windows.result"
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
-  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Restore Windows Account" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\restore-windows-account.ps1$\"" /F'
+  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Restore Windows Account" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PLUGINSDIR\KidOSRecovery\restore-windows-account.ps1$\"" /F'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -117,9 +117,7 @@
 
   ; Give the SYSTEM task time to remove Assigned Access and write its result.
   Sleep 5000
-  IfFileExists "$PROGRAMDATA\KidOS\Recovery\restore-windows.result" +2 0
-    Abort
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\verify-restore-result.ps1"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSRecovery\verify-restore-result.ps1"'
   Pop $0
   Pop $1
   ${If} $0 != 0
