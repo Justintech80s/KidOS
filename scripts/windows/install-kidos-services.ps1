@@ -21,6 +21,11 @@ try {
   New-Service -Name 'KidOSMediaClassifier' -BinaryPathName ('"' + $ClassifierExe + '"') -DisplayName 'KidOS Media Classifier' -StartupType Automatic | Out-Null
   New-Service -Name 'KidOSGuardian' -BinaryPathName ('"' + $GuardianExe + '"') -DisplayName 'KidOS Guardian' -StartupType Automatic | Out-Null
 
+  & "$env:SystemRoot\System32\sc.exe" config KidOSMediaClassifier obj= LocalSystem | Out-Null
+  if($LASTEXITCODE -ne 0){ throw "Could not configure KidOSMediaClassifier as LocalSystem (exit $LASTEXITCODE)." }
+  & "$env:SystemRoot\System32\sc.exe" config KidOSGuardian obj= LocalSystem | Out-Null
+  if($LASTEXITCODE -ne 0){ throw "Could not configure KidOSGuardian as LocalSystem (exit $LASTEXITCODE)." }
+
   & "$env:SystemRoot\System32\sc.exe" description KidOSMediaClassifier "Local KidOS image and video safety classification service." | Out-Null
   & "$env:SystemRoot\System32\sc.exe" failure KidOSMediaClassifier reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
   & "$env:SystemRoot\System32\sc.exe" failureflag KidOSMediaClassifier 1 | Out-Null
