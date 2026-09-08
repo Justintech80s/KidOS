@@ -5,6 +5,39 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-ProcessWithTimeout {
+  param(
+    [Parameter(Mandatory=$true)][string]$FilePath,
+    [string]$Arguments = "",
+    [int]$TimeoutSeconds = 300,
+    [string]$Label = "process"
+  )
+
+  Write-Host ("Starting {0} with a {1}s timeout..." -f $Label, $TimeoutSeconds)
+  $p = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru
+  try {
+    if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
+      Write-Warning ("{0} timed out after {1} seconds. Capturing process diagnostics." -f $Label, $TimeoutSeconds)
+      Get-Process | Sort-Object ProcessName | Format-Table Id,ProcessName,CPU,StartTime -AutoSize | Out-String | Write-Host
+      try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
+      throw ("{0} timed out after {1} seconds." -f $Label, $TimeoutSeconds)
+    }
+    return $p.ExitCode
+  } finally {
+    try { $p.Dispose() } catch {}
+  }
+}
+
+function Write-KidOSDiagnostics {
+  param([string]$Stage)
+  Write-Host ("=== Diagnostics: {0} ===" -f $Stage)
+  Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue |
+    Format-Table Name,Status,StartType -AutoSize | Out-String | Write-Host
+  Get-ScheduledTask -TaskName "KidOS Guardian Recovery" -ErrorAction SilentlyContinue |
+    Format-List TaskName,State,TaskPath | Out-String | Write-Host
+  Get-Process | Where-Object { $_.ProcessName -match "KidOS|kidos|powershell|nsis|uninstall" } |
+    Format-Table Id,ProcessName,CPU,StartTime -AutoSize | Out-String | Write-Host
+}
 function Assert-True([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw $Message }
 }
@@ -31,8 +64,9 @@ $admins = Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop | ForEa
 Assert-True (-not ($admins -contains $childUser)) "Test child account unexpectedly belongs to Administrators."
 
 Write-Host "Installing KidOS silently..."
-$process = Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait -PassThru
-Assert-True ($process.ExitCode -eq 0) "KidOS installer exited with code $($process.ExitCode)."
+$installExit = Invoke-ProcessWithTimeout -FilePath $InstallerPath -Arguments "/S" -TimeoutSeconds 420 -Label "KidOS installer"
+Assert-True ($installExit -eq 0) "KidOS installer exited with code $installExit."
+Write-KidOSDiagnostics -Stage "after install"
 
 $guardian = Wait-ServiceRunning "KidOSGuardian"
 $classifier = Wait-ServiceRunning "KidOSMediaClassifier"
@@ -126,8 +160,9 @@ if ($uninstallString -match '^"([^"]+)"') { $uninstaller = $matches[1] } else { 
 Assert-True (Test-Path $uninstaller) "KidOS uninstaller executable was not found."
 
 Write-Host "Uninstalling KidOS silently..."
-$uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
-Assert-True ($uninstall.ExitCode -eq 0) "KidOS uninstaller exited with code $($uninstall.ExitCode)."
+$uninstallExit = Invoke-ProcessWithTimeout -FilePath $uninstaller -Arguments "/S" -TimeoutSeconds 300 -Label "KidOS uninstaller"
+Assert-True ($uninstallExit -eq 0) "KidOS uninstaller exited with code $uninstallExit."
+Write-KidOSDiagnostics -Stage "after uninstall"
 Start-Sleep -Seconds 3
 
 Assert-True (-not (Get-Service KidOSGuardian -ErrorAction SilentlyContinue)) "Guardian service remains after uninstall."
