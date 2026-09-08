@@ -57,6 +57,7 @@ assert.match(provisioning, /RandomNumberGenerator\]::Create\(\)/, 'Guardian prov
 assert.match(provisioning, /New-Object byte\[\] 32/, 'Guardian provisioning must generate a 256-bit token.');
 assert.match(provisioning, /BitConverter\]::ToString\(\$bytes\).*Replace\('-', ''\).*ToLowerInvariant/s, 'Guardian provisioning must use a Windows PowerShell 5.1-compatible hex conversion.');
 assert.match(provisioning, /publisher-thumbprint\.txt/, 'Signed production installs must pin their Windows publisher certificate.');
+assert.match(provisioning, /Get-AuthenticodeSignature[\s\S]*catch[\s\S]*Authenticode inspection unavailable/, 'Unavailable Authenticode inspection must not abort unsigned CI/development provisioning.');
 assert.match(provisioning, /icacls\.exe/, 'Guardian provisioning must protect its credential directory ACL.');
 
 assert.match(browserHost, /matches!\(url\.scheme\(\), "https" \| "http"\)/, 'Safe Browser must restrict navigations to HTTP(S).');
