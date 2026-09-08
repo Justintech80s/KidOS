@@ -89,6 +89,20 @@ jobs:
           Get-ChildItem "$env:ProgramData\KidOS" -Recurse -ErrorAction SilentlyContinue |
             Select-Object FullName,Length,LastWriteTime |
             Out-File target/release/diagnostics/kidos-programdata.txt
+          $serviceInstallLog = Join-Path $env:ProgramData "KidOS\Diagnostics\service-install.log"
+          if (Test-Path $serviceInstallLog) {
+            Copy-Item $serviceInstallLog target/release/diagnostics/service-install.log -Force
+          }
+          Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
+            Select-Object TimeCreated,Id,LevelDisplayName,Message |
+            Format-List * |
+            Out-File target/release/diagnostics/service-control-manager-events.txt
+          Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'KidOS|media classifier|guardian' } |
+            Select-Object TimeCreated,ProviderName,Id,LevelDisplayName,Message |
+            Format-List * |
+            Out-File target/release/diagnostics/application-events.txt
 
       - name: Upload lifecycle diagnostics
         if: always()
