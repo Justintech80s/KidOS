@@ -17,7 +17,7 @@ on:
 jobs:
   clean-windows-vm:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -65,9 +65,38 @@ jobs:
 
       - name: Clean Windows install / service / recovery / uninstall test
         shell: pwsh
+        timeout-minutes: 20
         run: |
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
           ./tests/windows/clean-vm-smoke.ps1 -InstallerPath $installer
+
+      - name: Capture Windows lifecycle diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/release/diagnostics | Out-Null
+          Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue |
+            Format-List * | Out-File target/release/diagnostics/services.txt
+          Get-ScheduledTask -TaskName "KidOS Guardian Recovery" -ErrorAction SilentlyContinue |
+            Format-List * | Out-File target/release/diagnostics/recovery-task.txt
+          Get-Process |
+            Sort-Object ProcessName |
+            Format-Table Id,ProcessName,CPU,StartTime -AutoSize |
+            Out-File target/release/diagnostics/processes.txt
+          Get-ChildItem "$env:ProgramFiles\KidOS" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Out-File target/release/diagnostics/kidos-files.txt
+          Get-ChildItem "$env:ProgramData\KidOS" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Out-File target/release/diagnostics/kidos-programdata.txt
+
+      - name: Upload lifecycle diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Clean-VM-Diagnostics
+          path: target/release/diagnostics
+          if-no-files-found: warn
 
       - name: Upload verified installer and integrity manifest
         uses: actions/upload-artifact@v4
