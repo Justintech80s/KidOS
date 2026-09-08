@@ -89,6 +89,10 @@ jobs:
           Get-ChildItem "$env:ProgramData\KidOS" -Recurse -ErrorAction SilentlyContinue |
             Select-Object FullName,Length,LastWriteTime |
             Out-File target/release/diagnostics/kidos-programdata.txt
+          $credentialLog = Join-Path $env:ProgramData "KidOS\Diagnostics\credential-provisioning.log"
+          if (Test-Path $credentialLog) {
+            Copy-Item $credentialLog target/release/diagnostics/credential-provisioning.log -Force
+          }
           $serviceInstallLog = Join-Path $env:ProgramData "KidOS\Diagnostics\service-install.log"
           if (Test-Path $serviceInstallLog) {
             Copy-Item $serviceInstallLog target/release/diagnostics/service-install.log -Force
