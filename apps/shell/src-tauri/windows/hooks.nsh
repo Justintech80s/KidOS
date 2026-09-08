@@ -4,9 +4,10 @@
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\rollback-partial-install.ps1"'
   IfSilent kidos_abort_silent_${__LINE__}
   MessageBox MB_ICONSTOP|MB_OK "${MESSAGE}"
+  Abort
 kidos_abort_silent_${__LINE__}:
   SetErrorLevel 1
-  Abort
+  Quit
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -109,9 +110,10 @@ kidos_abort_silent_${__LINE__}:
   ${If} $0 != 0
     IfSilent kidos_uninstall_task_silent
     MessageBox MB_ICONSTOP|MB_OK "KidOS could not create its Windows recovery task. Uninstall will stop to avoid leaving the child account locked."
+    Abort
 kidos_uninstall_task_silent:
     SetErrorLevel 1
-    Abort
+    Quit
   ${EndIf}
   nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Run /TN "KidOS Restore Windows Account"'
   Pop $0
@@ -119,9 +121,10 @@ kidos_uninstall_task_silent:
   ${If} $0 != 0
     IfSilent kidos_uninstall_start_silent
     MessageBox MB_ICONSTOP|MB_OK "KidOS could not start Windows account recovery. Uninstall will stop."
+    Abort
 kidos_uninstall_start_silent:
     SetErrorLevel 1
-    Abort
+    Quit
   ${EndIf}
 
   ; Give the SYSTEM task time to remove Assigned Access and write its result.
@@ -132,9 +135,10 @@ kidos_uninstall_start_silent:
   ${If} $0 != 0
     IfSilent kidos_uninstall_verify_silent
     MessageBox MB_ICONSTOP|MB_OK "KidOS could not verify that Windows lockdown was removed. Uninstall will stop."
+    Abort
 kidos_uninstall_verify_silent:
     SetErrorLevel 1
-    Abort
+    Quit
   ${EndIf}
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
 
