@@ -41,6 +41,10 @@ assert.doesNotMatch(hooks, /powershell\.exe[^\r\n]*-Command/i, 'NSIS hooks must 
 
 assert.match(hooks, /File \/oname=rollback-partial-install\.ps1/, 'Installer must bundle a partial-install rollback script.');
 assert.match(hooks, /rollback-partial-install\.ps1/g, 'Installer failure paths must invoke partial-install rollback.');
+assert.match(hooks, /IfSilent kidos_abort_silent_[^\r\n]+[\s\S]*?kidos_abort_silent_[^\r\n]+:\s*SetErrorLevel 1\s*Quit/, 'Silent install failure must terminate the NSIS process instead of leaving an aborted UI alive.');
+assert.match(hooks, /kidos_uninstall_task_silent:\s*SetErrorLevel 1\s*Quit/, 'Silent uninstall task failure must terminate immediately.');
+assert.match(hooks, /kidos_uninstall_start_silent:\s*SetErrorLevel 1\s*Quit/, 'Silent uninstall recovery-start failure must terminate immediately.');
+assert.match(hooks, /kidos_uninstall_verify_silent:\s*SetErrorLevel 1\s*Quit/, 'Silent uninstall restore-verification failure must terminate immediately.');
 assert.match(partialRollback, /KidOSMediaClassifier/, 'Partial rollback must remove the classifier service.');
 assert.match(partialRollback, /KidOSGuardian/, 'Partial rollback must remove the Guardian service.');
 assert.match(partialRollback, /KidOS Guardian Recovery/, 'Partial rollback must remove the recovery task if it was registered.');
