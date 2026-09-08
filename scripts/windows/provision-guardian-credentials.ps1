@@ -40,10 +40,21 @@ try {
     Write-ProvisioningDiagnostic ("Created classifier token at {0}." -f $tokenPath)
 
     if (Test-Path -LiteralPath $InstallerPath) {
-        $signature = Get-AuthenticodeSignature -LiteralPath $InstallerPath
-        if ($signature.Status -eq 'Valid' -and $signature.SignerCertificate) {
-            $thumbprintPath = Join-Path $GuardianDataDir 'publisher-thumbprint.txt'
-            Set-Content -LiteralPath $thumbprintPath -Value $signature.SignerCertificate.Thumbprint -NoNewline -Encoding ASCII
+        # CI and development installers can be unsigned. Signature discovery must
+        # never block Guardian credential provisioning merely because the
+        # Microsoft.PowerShell.Security module is unavailable on a runner.
+        # Signed production installers are still pinned when Authenticode is available.
+        try {
+            $signature = Get-AuthenticodeSignature -LiteralPath $InstallerPath -ErrorAction Stop
+            if ($signature.Status -eq 'Valid' -and $signature.SignerCertificate) {
+                $thumbprintPath = Join-Path $GuardianDataDir 'publisher-thumbprint.txt'
+                Set-Content -LiteralPath $thumbprintPath -Value $signature.SignerCertificate.Thumbprint -NoNewline -Encoding ASCII
+                Write-ProvisioningDiagnostic ("Pinned installer publisher certificate {0}." -f $signature.SignerCertificate.Thumbprint)
+            } else {
+                Write-ProvisioningDiagnostic ("Installer is not Authenticode-signed with a valid certificate (status {0}); continuing without a publisher pin." -f $signature.Status)
+            }
+        } catch {
+            Write-ProvisioningDiagnostic ("Authenticode inspection unavailable; continuing unsigned CI/development install: {0}" -f $_.Exception.Message)
         }
     }
 
