@@ -2,10 +2,12 @@
 
 !macro KIDOS_ABORT_WITH_ROLLBACK MESSAGE
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\rollback-partial-install.ps1"'
-  IfSilent kidos_abort_silent_${__LINE__}
+  ; Use a relative jump here. A macro-generated label based on __LINE__ expands
+  ; differently at each insertion site inside Tauri's generated NSIS script and
+  ; can leave makensis with an unresolved label.
+  IfSilent +3
   MessageBox MB_ICONSTOP|MB_OK "${MESSAGE}"
   Abort
-kidos_abort_silent_${__LINE__}:
   SetErrorLevel 1
   Quit
 !macroend
