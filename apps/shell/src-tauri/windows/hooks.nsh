@@ -24,6 +24,7 @@
   File /oname=hash-recovery-installer.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\hash-recovery-installer.ps1"
   File /oname=verify-restore-result.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-restore-result.ps1"
   File /oname=rollback-partial-install.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-partial-install.ps1"
+  File /oname=install-recovery-task.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\install-recovery-task.ps1"
 
   ; Stage recovery before any fallible setup step so partial installs remain recoverable.
   SetOutPath "$PROGRAMFILES64\KidOS\Recovery"
@@ -84,8 +85,7 @@
     !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS Guardian did not pass its startup health check. Installation was rolled back."
   ${EndIf}
 
-  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
-  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Guardian Recovery" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1$\"" /F'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\install-recovery-task.ps1" -RecoveryScript "$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1"'
   Pop $0
   Pop $1
   ${If} $0 != 0
