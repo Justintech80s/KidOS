@@ -55,7 +55,7 @@ jobs:
           $files = @()
           $files += Get-ChildItem target/release/bundle/nsis/*-setup.exe
           $files += Get-Item target/release/kidos-guardian-host.exe
-          $files += Get-Item services/media-classifier/dist/kidos-media-classifier.exe
+          $files += Get-Item services/media-classifier/dist/kidos-media-classifier/kidos-media-classifier.exe
           $manifest = foreach ($file in $files) {
             $hash = Get-FileHash $file.FullName -Algorithm SHA256
             "$($hash.Hash.ToLower())  $($file.Name)"
