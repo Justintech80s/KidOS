@@ -82,6 +82,8 @@ jobs:
           Get-Content "$env:ProgramData\KidOS\Guardian\recovery.log" -ErrorAction SilentlyContinue | Out-File artifacts/recovery.log
           $diag = Join-Path $env:ProgramData "KidOS\Diagnostics"
           if (Test-Path $diag) { Copy-Item (Join-Path $diag "*") artifacts -Recurse -Force -ErrorAction SilentlyContinue }
+          $classifierLog = Join-Path $env:ProgramData "KidOS\Diagnostics\media-classifier-service.log"
+          if (Test-Path $classifierLog) { Copy-Item $classifierLog artifacts/media-classifier-service.log -Force }
           Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-60)} -ErrorAction SilentlyContinue |
             Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
             Select-Object TimeCreated,Id,LevelDisplayName,Message |
