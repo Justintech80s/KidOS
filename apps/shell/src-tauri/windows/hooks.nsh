@@ -32,7 +32,7 @@
   File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
 
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier"
-  File /oname=kidos-media-classifier.exe "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier.exe"
+  File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier\*.*"
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier\model"
   File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\model\*.*"
 
