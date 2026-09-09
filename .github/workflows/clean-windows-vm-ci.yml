@@ -105,6 +105,10 @@ jobs:
           if (Test-Path $verificationLog) {
             Copy-Item $verificationLog target/release/diagnostics/service-verification.log -Force
           }
+          $recoveryTaskLog = Join-Path $env:ProgramData "KidOS\Diagnostics\recovery-task-install.log"
+          if (Test-Path $recoveryTaskLog) {
+            Copy-Item $recoveryTaskLog target/release/diagnostics/recovery-task-install.log -Force
+          }
           Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
             Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
             Select-Object TimeCreated,Id,LevelDisplayName,Message |
