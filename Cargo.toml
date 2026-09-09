@@ -5,5 +5,6 @@ members = [
   "crates/policy-core",
   "crates/secure-store",
   "crates/guardian-service",
-  "crates/guardian-host"
+  "crates/guardian-host",
+  "crates/shadow-core"
 ]
