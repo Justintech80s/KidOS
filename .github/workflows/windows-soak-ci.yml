@@ -14,6 +14,7 @@ on:
       - "apps/shell/**"
       - "crates/**"
       - "services/media-classifier/**"
+      - "services/media-classifier/windows_service.py"
       - "scripts/windows/**"
       - "tests/windows/**"
       - ".github/workflows/windows-soak-ci.yml"
