@@ -63,11 +63,15 @@ jobs:
           if (-not $clean -or $clean.Count -eq 0 -or $clean[0].headSha -ne $sha) {
             throw "Trusted release blocked: KidOS Clean Windows VM CI has not passed for commit $sha."
           }
+          $shadow = gh run list --workflow "KidOS Shadow Validation CI" --commit $sha --status success --limit 1 --json databaseId,headSha,conclusion | ConvertFrom-Json
+          if (-not $shadow -or $shadow.Count -eq 0 -or $shadow[0].headSha -ne $sha) {
+            throw "Trusted release blocked: KidOS Shadow Validation CI has not passed for commit $sha."
+          }
           $interactive = gh run list --workflow "KidOS Interactive Windows Session Validation" --commit $sha --status success --limit 1 --json databaseId,headSha,conclusion | ConvertFrom-Json
           if (-not $interactive -or $interactive.Count -eq 0 -or $interactive[0].headSha -ne $sha) {
             throw "Trusted release blocked: the real rebooted child-session validation has not passed for commit $sha."
           }
-          Write-Host "Production validation gates passed: clean VM run $($clean[0].databaseId), interactive run $($interactive[0].databaseId)."
+          Write-Host "Production validation gates passed: clean VM run $($clean[0].databaseId), Shadow run $($shadow[0].databaseId), interactive run $($interactive[0].databaseId)."
 
       - name: Require trusted signing credentials
         shell: pwsh
