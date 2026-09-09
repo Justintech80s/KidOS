@@ -11,6 +11,18 @@ function Assert-True([bool]$Condition, [string]$Message) {
 $tokenPath = Join-Path $env:ProgramData "KidOS\Guardian\media-classifier.token"
 Assert-True (Test-Path $tokenPath) "KidOS classifier token is missing."
 $token = (Get-Content $tokenPath -Raw).Trim()
+Write-Host "Waiting for deep classifier model readiness before soak..."
+$modelHealth = $null
+$modelDeadline = (Get-Date).AddMinutes(5)
+do {
+  try {
+    $modelHealth = Invoke-RestMethod -Uri "http://127.0.0.1:8765/model-health" -Headers @{ "x-kidos-classifier-token" = $token } -TimeoutSec 15
+    if ($modelHealth.status -eq "healthy" -and $modelHealth.classifier_loaded -eq $true) { break }
+  } catch {}
+  Start-Sleep -Seconds 5
+} while ((Get-Date) -lt $modelDeadline)
+Assert-True ($modelHealth.status -eq "healthy" -and $modelHealth.classifier_loaded -eq $true) "Classifier AI model did not become ready within 5 minutes."
+
 $deadline = (Get-Date).AddMinutes($Minutes)
 $iteration = 0
 
