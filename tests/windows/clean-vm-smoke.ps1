@@ -18,7 +18,7 @@ function Invoke-ProcessWithTimeout {
   try {
     if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
       Write-Warning ("{0} timed out after {1} seconds. Capturing process diagnostics." -f $Label, $TimeoutSeconds)
-      Get-Process | Sort-Object ProcessName | Format-Table Id,ProcessName,CPU,StartTime -AutoSize | Out-String | Write-Host
+      Get-CimInstance Win32_Process | Sort-Object Name | Select-Object ProcessId,Name,CommandLine | Format-Table -Wrap -AutoSize | Out-String | Write-Host
       try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
       throw ("{0} timed out after {1} seconds." -f $Label, $TimeoutSeconds)
     }
