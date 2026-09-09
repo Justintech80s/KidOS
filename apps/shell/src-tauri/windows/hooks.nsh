@@ -31,8 +31,18 @@
   File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
   File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
 
-  SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier"
-  File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier\*.*"
+  ; Keep the large Python/AI runtime compressed while makensis builds the
+  ; installer. Feeding thousands of loose Torch/Transformers files directly to
+  ; NSIS can exceed its mmap range. Expand the payload once at install time.
+  SetOutPath "$PLUGINSDIR\KidOSMediaClassifier"
+  File /oname=kidos-media-classifier-bundle.zip "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier-bundle.zip"
+  CreateDirectory "$PROGRAMFILES64\KidOS\MediaClassifier"
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath ''$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip'' -DestinationPath ''$PROGRAMFILES64\KidOS\MediaClassifier'' -Force"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not unpack its local media classifier. Installation was rolled back."
+  ${EndIf}
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier\model"
   File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\model\*.*"
 
