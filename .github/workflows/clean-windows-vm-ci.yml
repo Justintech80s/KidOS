@@ -101,6 +101,10 @@ jobs:
           if (Test-Path $classifierLog) {
             Copy-Item $classifierLog target/release/diagnostics/media-classifier-service.log -Force
           }
+          $verificationLog = Join-Path $env:ProgramData "KidOS\Diagnostics\service-verification.log"
+          if (Test-Path $verificationLog) {
+            Copy-Item $verificationLog target/release/diagnostics/service-verification.log -Force
+          }
           Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
             Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
             Select-Object TimeCreated,Id,LevelDisplayName,Message |
