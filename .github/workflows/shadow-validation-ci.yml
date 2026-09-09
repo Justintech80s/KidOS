@@ -56,28 +56,93 @@ jobs:
         run: pnpm --filter @kidos/shell tauri build --bundles nsis
 
       - name: Install KidOS
+        id: install
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path target/shadow-results/install-diagnostics | Out-Null
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
           $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru
-          if (-not $process.WaitForExit(600000)) {
+          if (-not $process.WaitForExit(900000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw "KidOS installer timed out after 10 minutes."
+            "install_ok=false" >> $env:GITHUB_OUTPUT
+            throw "KidOS installer timed out after 15 minutes."
           }
-          if ($process.ExitCode -ne 0) {
+
+          "install_exit_code=$($process.ExitCode)" >> $env:GITHUB_OUTPUT
+          if ($process.ExitCode -eq 0) {
+            "install_ok=true" >> $env:GITHUB_OUTPUT
+            Write-Host "KidOS installation completed successfully."
+          } else {
+            "install_ok=false" >> $env:GITHUB_OUTPUT
             throw "KidOS installer failed with exit code $($process.ExitCode)."
           }
 
+      - name: Capture Shadow install diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $dest = "target/shadow-results/install-diagnostics"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $programDataDiagnostics = Join-Path $env:ProgramData "KidOS\Diagnostics"
+          if (Test-Path $programDataDiagnostics) {
+            Copy-Item (Join-Path $programDataDiagnostics "*") $dest -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue | Format-List * | Out-File (Join-Path $dest "services.txt")
+          Get-ScheduledTask -TaskName "KidOS Guardian Recovery" -ErrorAction SilentlyContinue | Format-List * | Out-File (Join-Path $dest "recovery-task.txt")
+          Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Service Control Manager"; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match "KidOSGuardian|KidOSMediaClassifier" } |
+            Select-Object TimeCreated,Id,LevelDisplayName,Message |
+            Format-List * |
+            Out-File (Join-Path $dest "service-control-manager-events.txt")
+          Get-WinEvent -FilterHashtable @{LogName="Application"; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match "KidOS|media classifier|guardian" } |
+            Select-Object TimeCreated,ProviderName,Id,LevelDisplayName,Message |
+            Format-List * |
+            Out-File (Join-Path $dest "application-events.txt")
+          Get-ChildItem "$env:ProgramFiles\KidOS" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Out-File (Join-Path $dest "installed-files.txt")
+
       - name: Run Shadow validation
+        if: steps.install.outputs.install_ok == 'true'
         shell: pwsh
         run: ./tests/shadow/run-shadow-validation.ps1 -SoakMinutes 5
+
+      - name: Generate blocked Shadow report when installation fails
+        if: always() && steps.install.outputs.install_ok != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/shadow-results | Out-Null
+          $config = Get-Content apps/shell/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $exitCode = "${{ steps.install.outputs.install_exit_code }}"
+          if ([string]::IsNullOrWhiteSpace($exitCode)) { $exitCode = "timeout-or-unknown" }
+          $report = [ordered]@{
+            build = $config.version
+            overall_score = 0
+            release_ready = $false
+            critical_failures = 1
+            warnings = 0
+            tests = @([ordered]@{
+              name = "kidos_installation"
+              status = "FAIL"
+              severity = "Critical"
+              reason = "KidOS installation failed before Shadow runtime validation."
+              exit_code = $exitCode
+            })
+          }
+          $report | ConvertTo-Json -Depth 8 | Set-Content target/shadow-results/shadow-report.json -Encoding UTF8
+          "SHADOW REPORT" | Set-Content target/shadow-results/shadow-report.txt -Encoding UTF8
+          "Overall: 0%" | Add-Content target/shadow-results/shadow-report.txt
+          "Critical failures: 1" | Add-Content target/shadow-results/shadow-report.txt
+          "Warnings: 0" | Add-Content target/shadow-results/shadow-report.txt
+          "Release recommendation: BLOCKED" | Add-Content target/shadow-results/shadow-report.txt
+          "Blocker: KidOS installation failed before Shadow runtime validation." | Add-Content target/shadow-results/shadow-report.txt
+          "Installer exit code: $exitCode" | Add-Content target/shadow-results/shadow-report.txt
 
       - name: Upload Shadow report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: KidOS-Shadow-Validation
-          path: |
-            target/shadow-results/**
-            C:\ProgramData\KidOS\Diagnostics\**
+          path: target/shadow-results/**
           if-no-files-found: warn
