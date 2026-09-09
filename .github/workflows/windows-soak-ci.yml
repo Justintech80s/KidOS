@@ -39,13 +39,7 @@ jobs:
 
       - name: Package local classifier and model
         shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "services/media-classifier[packaging]"
-          python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openai/clip-vit-base-patch32', local_dir='services/media-classifier/dist/model')"
-          Push-Location services/media-classifier
-          pyinstaller --clean --noconfirm kidos-media-classifier.spec
-          Pop-Location
+        run: ./scripts/windows/package-media-classifier.ps1
 
       - name: Build Guardian and installer
         run: |
@@ -56,7 +50,11 @@ jobs:
         shell: pwsh
         run: |
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          $process = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru
+          $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru
+          if (-not $process.WaitForExit(900000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "KidOS installer timed out after 15 minutes."
+          }
           if ($process.ExitCode -ne 0) { throw "KidOS installer failed with $($process.ExitCode)." }
 
       - name: Run long-duration service soak
@@ -72,6 +70,12 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue | Format-List * | Out-File artifacts/services.txt
           Get-Content "$env:ProgramData\KidOS\Guardian\recovery.log" -ErrorAction SilentlyContinue | Out-File artifacts/recovery.log
+          $diag = Join-Path $env:ProgramData "KidOS\Diagnostics"
+          if (Test-Path $diag) { Copy-Item (Join-Path $diag "*") artifacts -Recurse -Force -ErrorAction SilentlyContinue }
+          Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-60)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
+            Select-Object TimeCreated,Id,LevelDisplayName,Message |
+            Format-List * | Out-File artifacts/service-control-manager-events.txt
 
       - name: Upload soak diagnostics
         if: always()
