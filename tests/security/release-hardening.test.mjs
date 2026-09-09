@@ -24,6 +24,8 @@ assert.match(tauri.app?.security?.csp ?? '', /default-src 'self'/, 'KidOS must h
 assert.doesNotMatch(tauri.app?.security?.csp ?? '', /default-src \*/, 'KidOS CSP must not allow every source.');
 
 assert.match(hooks, /File \/oname=install-kidos-services\.ps1/, 'Installer must bundle the standalone service installer.');
+assert.match(hooks, /kidos-media-classifier-bundle\.zip/, 'Installer must embed the compressed classifier runtime payload instead of thousands of loose AI runtime files.');
+assert.match(hooks, /Expand-Archive[\s\S]*KidOS\\MediaClassifier/, 'Installer must expand the classifier payload into its protected on-disk service directory.');
 assert.match(hooks, /-File .*install-kidos-services\.ps1/, 'Installer must execute service registration with PowerShell -File.');
 assert.match(serviceInstaller, /sc\.exe" config KidOSMediaClassifier obj= LocalSystem/, 'KidOS Media Classifier must be explicitly configured as LocalSystem.');
 assert.match(serviceInstaller, /sc\.exe" config KidOSGuardian obj= LocalSystem/, 'KidOS Guardian must be explicitly configured as LocalSystem.');
