@@ -1,0 +1,83 @@
+name: KidOS Shadow Validation CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/**"
+      - "apps/shell/**"
+      - "services/**"
+      - "scripts/windows/**"
+      - "tests/shadow/**"
+      - ".github/workflows/shadow-validation-ci.yml"
+
+jobs:
+  shadow-validation:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    env:
+      KIDOS_SHADOW_TEST_MODE: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run KidOS and Shadow unit tests
+        run: |
+          pnpm -r test --run
+          cargo test --workspace
+          cargo test -p shadow-core
+
+      - name: Package classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+
+      - name: Build Guardian
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Build installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+
+      - name: Install KidOS
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru
+          if (-not $process.WaitForExit(600000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "KidOS installer timed out after 10 minutes."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "KidOS installer failed with exit code $($process.ExitCode)."
+          }
+
+      - name: Run Shadow validation
+        shell: pwsh
+        run: ./tests/shadow/run-shadow-validation.ps1 -SoakMinutes 5
+
+      - name: Upload Shadow report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Shadow-Validation
+          path: |
+            target/shadow-results/**
+            C:\ProgramData\KidOS\Diagnostics\**
+          if-no-files-found: warn
