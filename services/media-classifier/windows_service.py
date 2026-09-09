@@ -82,12 +82,17 @@ class KidOSMediaClassifierService(win32serviceutil.ServiceFramework):
             application = getattr(app_module, "app")
             _service_log("FastAPI application imported successfully.")
 
+            # The frozen Windows service does not need Uvicorn's CLI logging
+            # formatter stack. Disabling log_config avoids formatter imports
+            # that are unavailable in the packaged service while preserving
+            # KidOS' own protected diagnostics log.
             config = uvicorn.Config(
                 application,
                 host="127.0.0.1",
                 port=int(os.environ["KIDOS_MEDIA_CLASSIFIER_PORT"]),
                 access_log=False,
                 log_level="warning",
+                log_config=None,
             )
             self.server = uvicorn.Server(config)
 
