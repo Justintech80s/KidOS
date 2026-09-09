@@ -7,6 +7,16 @@ on:
         description: "Soak duration in minutes"
         required: false
         default: "20"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/shell/**"
+      - "crates/**"
+      - "services/media-classifier/**"
+      - "scripts/windows/**"
+      - "tests/windows/**"
+      - ".github/workflows/windows-soak-ci.yml"
   schedule:
     - cron: '17 4 * * 0'
 
