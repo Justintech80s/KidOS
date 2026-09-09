@@ -98,7 +98,7 @@ jobs:
       - name: Sign Guardian and classifier before installer packaging
         shell: pwsh
         run: |
-          ./scripts/windows/sign-release-artifacts.ps1 -Files @("target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier.exe") -PfxBase64 $env:KIDOS_WINDOWS_PFX_BASE64 -PfxPassword $env:KIDOS_WINDOWS_PFX_PASSWORD
+          ./scripts/windows/sign-release-artifacts.ps1 -Files @("target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier/kidos-media-classifier.exe") -PfxBase64 $env:KIDOS_WINDOWS_PFX_BASE64 -PfxPassword $env:KIDOS_WINDOWS_PFX_PASSWORD
 
       - name: Enable Tauri Authenticode signing for this release
         shell: pwsh
@@ -114,14 +114,14 @@ jobs:
         shell: pwsh
         run: |
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          ./scripts/windows/verify-release-signatures.ps1 -Files @("target/release/kidos-shell.exe","target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier.exe",$installer)
+          ./scripts/windows/verify-release-signatures.ps1 -Files @("target/release/kidos-shell.exe","target/release/kidos-guardian-host.exe","services/media-classifier/dist/kidos-media-classifier/kidos-media-classifier.exe",$installer)
 
       - name: Generate integrity and update manifests
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          $files = @((Get-Item $installer),(Get-Item target/release/kidos-shell.exe),(Get-Item target/release/kidos-guardian-host.exe),(Get-Item services/media-classifier/dist/kidos-media-classifier.exe))
+          $files = @((Get-Item $installer),(Get-Item target/release/kidos-shell.exe),(Get-Item target/release/kidos-guardian-host.exe),(Get-Item services/media-classifier/dist/kidos-media-classifier/kidos-media-classifier.exe))
           $manifest = foreach ($file in $files) { $hash = Get-FileHash $file.FullName -Algorithm SHA256; "$($hash.Hash.ToLowerInvariant())  $($file.Name)" }
           $manifest | Set-Content target/release/KidOS-SHA256SUMS.txt -Encoding ASCII
           ./scripts/windows/new-update-manifest.ps1 -Version $version -InstallerPath $installer -OutputPath target/release/KidOS-update-manifest.json
