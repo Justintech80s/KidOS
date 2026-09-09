@@ -139,12 +139,36 @@ def classify_video(path: Path) -> tuple[str, str, float, int]:
 
 @app.get("/health")
 def health(x_kidos_classifier_token: str | None = Header(default=None)):
+    """Fast service-readiness probe used by the Windows installer/recovery path.
+
+    Do not load the multi-hundred-megabyte AI model here. Installation should
+    prove that the protected local service is alive, authenticated, and can see
+    its bundled model path; deeper model initialization is validated separately.
+    """
+    require_token(x_kidos_classifier_token)
+    bundled_model = Path(MODEL_ID)
+    model_present = bundled_model.is_dir() if bundled_model.is_absolute() else True
+    return {
+        "status": "healthy",
+        "model": MODEL_ID,
+        "model_present": model_present,
+        "classifier_loaded": classifier is not None,
+    }
+
+
+@app.get("/model-health")
+def model_health(x_kidos_classifier_token: str | None = Header(default=None)):
+    """Deep readiness probe for CI/Shadow validation.
+
+    This endpoint intentionally initializes the model and may take much longer
+    than the Windows service health probe.
+    """
     require_token(x_kidos_classifier_token)
     try:
         get_classifier()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"classifier unavailable: {type(exc).__name__}") from exc
-    return {"status": "healthy", "model": MODEL_ID}
+    return {"status": "healthy", "model": MODEL_ID, "classifier_loaded": True}
 
 
 @app.post("/classify", response_model=ClassificationResponse)
