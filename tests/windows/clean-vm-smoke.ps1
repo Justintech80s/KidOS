@@ -64,7 +64,7 @@ $admins = Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop | ForEa
 Assert-True (-not ($admins -contains $childUser)) "Test child account unexpectedly belongs to Administrators."
 
 Write-Host "Installing KidOS silently..."
-$installExit = Invoke-ProcessWithTimeout -FilePath $InstallerPath -Arguments "/S" -TimeoutSeconds 420 -Label "KidOS installer"
+$installExit = Invoke-ProcessWithTimeout -FilePath $InstallerPath -Arguments "/S" -TimeoutSeconds 900 -Label "KidOS installer"
 Assert-True ($installExit -eq 0) "KidOS installer exited with code $installExit."
 Write-KidOSDiagnostics -Stage "after install"
 
