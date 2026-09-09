@@ -7,7 +7,8 @@ $ErrorActionPreference = "Stop"
 $serviceDir = Join-Path $PSScriptRoot "..\..\services\media-classifier"
 $serviceDir = (Resolve-Path $serviceDir).Path
 $modelDir = Join-Path $serviceDir "dist\model"
-$exePath = Join-Path $serviceDir "dist\kidos-media-classifier.exe"
+$bundleDir = Join-Path $serviceDir "dist\kidos-media-classifier"
+$exePath = Join-Path $bundleDir "kidos-media-classifier.exe"
 
 & $Python -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
@@ -30,6 +31,9 @@ try {
 }
 
 if (-not (Test-Path $exePath)) { throw "Classifier executable was not produced: $exePath" }
+if (-not (Test-Path $bundleDir -PathType Container)) { throw "Classifier service bundle was not produced: $bundleDir" }
 if (-not (Test-Path (Join-Path $modelDir "config.json"))) { throw "Classifier model bundle was not produced." }
 
-Write-Host "KidOS media classifier package verified: $exePath"
+$bundleFiles = @(Get-ChildItem $bundleDir -Recurse -File)
+if ($bundleFiles.Count -lt 2) { throw "Classifier on-disk bundle is unexpectedly incomplete." }
+Write-Host ("KidOS media classifier on-disk service bundle verified: {0} files; host={1}" -f $bundleFiles.Count, $exePath)
