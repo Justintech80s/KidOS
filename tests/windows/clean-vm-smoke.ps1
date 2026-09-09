@@ -102,6 +102,18 @@ for ($i=0; $i -lt 30; $i++) {
 }
 Assert-True ($health.status -eq "healthy") "Classifier health endpoint did not become healthy."
 
+Write-Host "Checking deep AI model readiness..."
+$modelHealth = $null
+$modelDeadline = (Get-Date).AddMinutes(5)
+do {
+  try {
+    $modelHealth = Invoke-RestMethod -Uri "http://127.0.0.1:8765/model-health" -Headers @{ "x-kidos-classifier-token" = $token } -TimeoutSec 15
+    if ($modelHealth.status -eq "healthy" -and $modelHealth.classifier_loaded -eq $true) { break }
+  } catch {}
+  Start-Sleep -Seconds 5
+} while ((Get-Date) -lt $modelDeadline)
+Assert-True ($modelHealth.status -eq "healthy" -and $modelHealth.classifier_loaded -eq $true) "Classifier AI model did not become ready within 5 minutes."
+
 Write-Host "Checking classifier rejects unauthenticated health access..."
 $unauthorized = $false
 try {
