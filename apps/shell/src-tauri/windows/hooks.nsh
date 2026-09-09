@@ -37,7 +37,8 @@
   SetOutPath "$PLUGINSDIR\KidOSMediaClassifier"
   File /oname=kidos-media-classifier-bundle.zip "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier-bundle.zip"
   CreateDirectory "$PROGRAMFILES64\KidOS\MediaClassifier"
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath ''$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip'' -DestinationPath ''$PROGRAMFILES64\KidOS\MediaClassifier'' -Force"'
+  File /oname=extract-media-classifier.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\extract-media-classifier.ps1"
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSMediaClassifier\extract-media-classifier.ps1" -ArchivePath "$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip" -DestinationPath "$PROGRAMFILES64\KidOS\MediaClassifier"'
   Pop $0
   Pop $1
   ${If} $0 != 0
