@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import KidOSHomeShell from '../../apps/shell/src/features/home/KidOSHomeShell';
 import type { KidOSApi } from '../../apps/shell/src/lib/kidos-api';
@@ -51,9 +51,13 @@ describe('KidOS 2026 protected child shell', () => {
     expect(new URL(opened[0]).searchParams.get('safe')).toBe('active');
   });
 
-  it('routes Parent to the protected PIN entry point', () => {
+  it('routes Parent to the protected PIN entry point', async () => {
     render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
-    fireEvent.click(screen.getByRole('button', { name: /Parent/i }));
-    expect(document.activeElement).toBe(screen.getByLabelText('Parent PIN'));
+    const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
+    expect(parentButton).toBeTruthy();
+    fireEvent.click(parentButton!);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText('Parent PIN'));
+    });
   });
 });
