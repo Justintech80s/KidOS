@@ -67,8 +67,15 @@ jobs:
         shell: pwsh
         timeout-minutes: 35
         run: |
-          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          ./tests/windows/clean-vm-smoke.ps1 -InstallerPath $installer
+          New-Item -ItemType Directory -Force -Path target/release/diagnostics | Out-Null
+          $transcript = Join-Path (Resolve-Path target/release/diagnostics) "clean-vm-smoke-transcript.txt"
+          Start-Transcript -Path $transcript -Force
+          try {
+            $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+            ./tests/windows/clean-vm-smoke.ps1 -InstallerPath $installer
+          } finally {
+            Stop-Transcript -ErrorAction SilentlyContinue
+          }
 
       - name: Capture Windows lifecycle diagnostics
         if: always()
@@ -89,6 +96,14 @@ jobs:
           Get-ChildItem "$env:ProgramData\KidOS" -Recurse -ErrorAction SilentlyContinue |
             Select-Object FullName,Length,LastWriteTime |
             Out-File target/release/diagnostics/kidos-programdata.txt
+          if (Test-Path "$env:ProgramFiles\KidOS\Guardian") {
+            Get-Acl "$env:ProgramFiles\KidOS\Guardian" |
+              Format-List * | Out-File target/release/diagnostics/guardian-acl.txt
+          }
+          if (Test-Path "$env:ProgramData\KidOS") {
+            Get-Acl "$env:ProgramData\KidOS" |
+              Format-List * | Out-File target/release/diagnostics/programdata-acl.txt
+          }
           $credentialLog = Join-Path $env:ProgramData "KidOS\Diagnostics\credential-provisioning.log"
           if (Test-Path $credentialLog) {
             Copy-Item $credentialLog target/release/diagnostics/credential-provisioning.log -Force
@@ -108,6 +123,10 @@ jobs:
           $recoveryTaskLog = Join-Path $env:ProgramData "KidOS\Diagnostics\recovery-task-install.log"
           if (Test-Path $recoveryTaskLog) {
             Copy-Item $recoveryTaskLog target/release/diagnostics/recovery-task-install.log -Force
+          }
+          $recoveryLog = Join-Path $env:ProgramData "KidOS\Diagnostics\recovery.log"
+          if (Test-Path $recoveryLog) {
+            Copy-Item $recoveryLog target/release/diagnostics/recovery.log -Force
           }
           Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
             Where-Object { $_.Message -match 'KidOSGuardian|KidOSMediaClassifier' } |
