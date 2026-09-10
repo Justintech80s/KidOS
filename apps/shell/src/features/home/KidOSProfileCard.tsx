@@ -1,0 +1,2 @@
+export interface KidOSProfileViewModel { displayName: string; avatarUrl?: string; ageLabel?: string; levelLabel?: string; }
+export default function KidOSProfileCard({ profile }: { profile: KidOSProfileViewModel }) { return <div className="kidos-profile-card">{profile.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : <div className="kidos-avatar" aria-hidden="true">🧑🏽</div>}<div><strong>{profile.displayName}</strong><small>{[profile.ageLabel, profile.levelLabel].filter(Boolean).join(' • ') || 'Explorer'}</small></div></div>; }

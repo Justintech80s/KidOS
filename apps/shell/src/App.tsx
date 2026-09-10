@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import ChildHome from './features/home/ChildHome';
+import KidOSHomeShell from './features/home/KidOSHomeShell';
 import {
   tauriKidOSApi,
   type GuardianStatus,
@@ -10,6 +11,7 @@ type ProtectionState = 'checking' | GuardianStatus;
 
 export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
   const [protectionState, setProtectionState] = useState<ProtectionState>('checking');
+  const [parentWorkspace, setParentWorkspace] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -58,5 +60,9 @@ export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
     );
   }
 
-  return <ChildHome api={api} />;
+  if (parentWorkspace) {
+    return <ChildHome api={api} />;
+  }
+
+  return <KidOSHomeShell api={api} onOpenParentWorkspace={() => setParentWorkspace(true)} />;
 }
