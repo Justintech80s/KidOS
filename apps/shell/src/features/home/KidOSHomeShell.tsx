@@ -1,5 +1,6 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { KidOSApi } from '../../lib/kidos-api';
+import { prepareProtectedNavigation } from '../browser/protected-navigation';
 import KidOSDock from './KidOSDock';
 import KidOSGreeting from './KidOSGreeting';
 import KidOSHomeGrid from './KidOSHomeGrid';
@@ -21,24 +22,33 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
   const [parentStatus, setParentStatus] = useState('');
+  const parentPinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let mounted = true;
     async function refresh() {
       try {
         const guardian = await api.guardianStatus();
-        const recovery = api.getRecoveryStatus ? await api.getRecoveryStatus() : undefined;
+        let recovery;
+        let recoveryAvailable = false;
+        if (api.getRecoveryStatus) {
+          recovery = await api.getRecoveryStatus();
+          recoveryAvailable = true;
+        }
         if (!mounted) return;
+        const guardianHealthy = guardian === 'healthy';
         setStatus(normalizeKidOSSystemStatus({
-          guardianReachable: guardian === 'healthy',
-          guardianEnforcing: guardian === 'healthy' && (recovery?.policyValid ?? true),
-          classifierReachable: recovery?.classifierHealthy ?? guardian === 'healthy',
-          classifierReady: recovery?.classifierHealthy ?? guardian === 'healthy',
-          filterEnforcing: guardian === 'healthy' && (recovery?.policyValid ?? true),
-          recoveryAvailable: Boolean(api.getRecoveryStatus),
+          guardianReachable: true,
+          guardianEnforcing: guardianHealthy && (recovery?.policyValid ?? true),
+          classifierReachable: recovery?.classifierHealthy ?? false,
+          classifierReady: recovery?.classifierHealthy ?? false,
+          filterEnforcing: guardianHealthy && (recovery?.policyValid ?? true),
+          recoveryAvailable,
           observedAt: Date.now(),
         }));
-      } catch { if (mounted) setStatus(OFFLINE_KIDOS_STATUS); }
+      } catch {
+        if (mounted) setStatus(OFFLINE_KIDOS_STATUS);
+      }
     }
     void refresh();
     const id = window.setInterval(refresh, 10_000);
@@ -51,23 +61,77 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     setSearchStatus('Checking with KidOS...');
     const candidate = /^https?:\/\//i.test(query) ? query : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     try {
-      const decision = await api.evaluateNavigation(candidate);
-      if (decision === 'allow') {
-        if (api.openProtectedBrowser) await api.openProtectedBrowser(candidate);
+      const result = await prepareProtectedNavigation(candidate, api.evaluateNavigation);
+      if (result.state === 'load') {
+        if (!api.openProtectedBrowser) {
+          setSearchStatus('Safe browser is unavailable. KidOS did not open the destination.');
+          return;
+        }
+        await api.openProtectedBrowser(result.url);
         setSearchStatus('Opened through KidOS Safe Browser.');
-      } else if (decision === 'require_parent') setSearchStatus('Parent approval required.');
-      else setSearchStatus('Blocked by KidOS safety policy.');
-    } catch { setSearchStatus('Safe browsing is unavailable. KidOS did not open the destination.'); }
+      } else if (result.state === 'parent_gate') {
+        setSearchStatus('Parent approval required.');
+      } else {
+        setSearchStatus('Blocked by KidOS safety policy.');
+      }
+    } catch {
+      setSearchStatus('Safe browsing is unavailable. KidOS did not open the destination.');
+    }
   }
 
-  async function submitSearch(event: FormEvent) { event.preventDefault(); const value = searchValue.trim(); if (value) await runSafeSearch(value); }
-  async function createWorkspace(event: FormEvent) { event.preventDefault(); const value = createValue.trim(); if (!value) return; try { const plan = await api.planWorkspace(value); setWorkspaceTitle(plan.title); } catch { setWorkspaceTitle('KidOS could not prepare the workspace safely.'); } }
-  function askAi(event: FormEvent) { event.preventDefault(); const q = aiValue.trim(); if (!q) return; setAiAnswer(/space|planet/i.test(q) ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.' : /math|\d/.test(q) ? 'Break the problem into small steps, solve one step at a time, then check your answer.' : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.'); }
-  async function requestParent() { const pin = parentPin.trim(); if (!api.verifyParentPin) { setParentStatus('Parent verification is available in the installed Windows build.'); return; } if (!pin) return; try { const result = await api.verifyParentPin(pin); if (result.authorized) onOpenParentWorkspace(); else setParentStatus(result.locked ? 'Parent PIN is temporarily locked.' : 'Parent PIN was not accepted.'); } catch { setParentStatus('Parent verification is unavailable.'); } }
+  function openParentAccess() {
+    setParentStatus('');
+    window.requestAnimationFrame(() => parentPinRef.current?.focus());
+  }
+
+  async function submitSearch(event: FormEvent) {
+    event.preventDefault();
+    const value = searchValue.trim();
+    if (value) await runSafeSearch(value);
+  }
+
+  async function createWorkspace(event: FormEvent) {
+    event.preventDefault();
+    const value = createValue.trim();
+    if (!value) return;
+    try {
+      const plan = await api.planWorkspace(value);
+      setWorkspaceTitle(plan.title);
+    } catch {
+      setWorkspaceTitle('KidOS could not prepare the workspace safely.');
+    }
+  }
+
+  function askAi(event: FormEvent) {
+    event.preventDefault();
+    const q = aiValue.trim();
+    if (!q) return;
+    setAiAnswer(/space|planet/i.test(q)
+      ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.'
+      : /math|\d/.test(q)
+        ? 'Break the problem into small steps, solve one step at a time, then check your answer.'
+        : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+  }
+
+  async function requestParent() {
+    const pin = parentPin.trim();
+    if (!api.verifyParentPin) {
+      setParentStatus('Parent verification is available in the installed Windows build.');
+      return;
+    }
+    if (!pin) return;
+    try {
+      const result = await api.verifyParentPin(pin);
+      if (result.authorized) onOpenParentWorkspace();
+      else setParentStatus(result.locked ? 'Parent PIN is temporarily locked.' : 'Parent PIN was not accepted.');
+    } catch {
+      setParentStatus('Parent verification is unavailable.');
+    }
+  }
 
   return (
     <main className="kidos-shell-2026" data-testid="kidos-shell">
-      <KidOSSidebar active={active} onNavigate={setActive} onParentRequested={() => setActive('home')} />
+      <KidOSSidebar active={active} onNavigate={setActive} onParentRequested={openParentAccess} />
       <section className="kidos-stage">
         <KidOSTopBar onSafeSearch={runSafeSearch} />
         <div className="kidos-main">
@@ -81,7 +145,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
            active === 'apps' ? <section className="kidos-module"><h1>My Apps</h1><p>KidOS launches only apps already approved by a parent. Arbitrary executable paths are never accepted here.</p></section> :
            active === 'wellbeing' ? <section className="kidos-module"><h1>Wellbeing</h1><p>Screen-time balance, accessibility, and healthy-break tools.</p></section> :
            active === 'music' ? <section className="kidos-module"><h1>Music</h1><p>Parent-approved music and creative audio tools.</p></section> : null}
-          <section className="kidos-module" style={{ marginTop: 18 }} aria-label="Parent access"><h2>Parent access</h2><p>Guardian controls stay behind parent verification.</p><input aria-label="Parent PIN" type="password" inputMode="numeric" value={parentPin} onChange={(e) => setParentPin(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="Parent PIN"/><button type="button" onClick={requestParent}>Unlock Parent Workspace</button>{parentStatus && <div className="kidos-module-status" role="status">{parentStatus}</div>}<KidOSProfileCard profile={{ displayName: 'Alex', levelLabel: 'Explorer • Level 12' }} /></section>
+          <section className="kidos-module" style={{ marginTop: 18 }} aria-label="Parent access"><h2>Parent access</h2><p>Guardian controls stay behind parent verification.</p><input ref={parentPinRef} aria-label="Parent PIN" type="password" inputMode="numeric" value={parentPin} onChange={(e) => setParentPin(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="Parent PIN"/><button type="button" onClick={requestParent}>Unlock Parent Workspace</button>{parentStatus && <div className="kidos-module-status" role="status">{parentStatus}</div>}<KidOSProfileCard profile={{ displayName: 'Alex', levelLabel: 'Explorer • Level 12' }} /></section>
         </div>
         <KidOSDock onNavigate={setActive} />
       </section>
