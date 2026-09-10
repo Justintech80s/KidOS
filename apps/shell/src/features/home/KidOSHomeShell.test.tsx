@@ -53,6 +53,17 @@ describe('KidOSHomeShell', () => {
     expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement);
   });
 
+  it('does not claim classifier readiness without classifier telemetry', async () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    expect(await screen.findByText(/Media Safety: Offline/)).toBeTruthy();
+  });
+
+  it('shows restricted safe mode as degraded rather than unreachable', async () => {
+    const restrictedApi = { ...api, guardianStatus: async () => 'restricted_safe_mode' as const } as KidOSApi;
+    render(<KidOSHomeShell api={restrictedApi} onOpenParentWorkspace={() => undefined} />);
+    expect(await screen.findByText(/Safe Mode: Degraded/)).toBeTruthy();
+  });
+
   it('does not claim active protection when live status cannot be read', async () => {
     const offlineApi = { ...api, guardianStatus: async () => { throw new Error('offline'); } } as KidOSApi;
     render(<KidOSHomeShell api={offlineApi} onOpenParentWorkspace={() => undefined} />);
