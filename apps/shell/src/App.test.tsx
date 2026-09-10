@@ -21,7 +21,7 @@ describe('KidOS shell', () => {
     render(<App api={healthyApi} />);
     expect(screen.getByText('Checking protection...')).toBeTruthy();
     expect(await screen.findByTestId('kidos-shell')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Safe Browser' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'KidOS AI' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Safe Browser/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /KidOS AI/ }).length).toBeGreaterThan(0);
   });
 });
