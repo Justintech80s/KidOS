@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { KidOSApi } from '../../lib/kidos-api';
 import KidOSHomeShell from './KidOSHomeShell';
@@ -47,12 +47,12 @@ describe('KidOSHomeShell', () => {
     expect(new URL(opened).searchParams.get('safe')).toBe('active');
   });
 
-  it('moves keyboard focus to parent verification when Parent is selected', () => {
+  it('moves keyboard focus to parent verification when Parent is selected', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
     expect(parentButton).toBeTruthy();
     fireEvent.click(parentButton!);
-    expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement);
+    await waitFor(() => expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement));
   });
 
   it('does not claim classifier readiness without classifier telemetry', async () => {
