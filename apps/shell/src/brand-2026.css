@@ -13,5 +13,5 @@
   display: block;
   width: 100%;
   height: 100%;
-  background: url('/kidos-logo-2026-128.png') center / cover no-repeat;
+  background: url('../src-tauri/icons/icon.ico') center / cover no-repeat;
 }
