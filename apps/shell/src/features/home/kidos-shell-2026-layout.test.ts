@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('./kidos-shell-2026.css', import.meta.url), 'utf8');
+const cssPath = resolve(process.cwd(), 'src/features/home/kidos-shell-2026.css');
+const css = readFileSync(cssPath, 'utf8');
 
 describe('KidOS 2026 desktop layout contract', () => {
   it('keeps the standard desktop home at four columns for 1920x1080-class viewports', () => {
