@@ -32,6 +32,27 @@ describe('KidOSHomeShell', () => {
     expect(await screen.findByText('Parent approval required.')).toBeTruthy();
   });
 
+  it('enforces provider safe-search settings before opening an allowed search', async () => {
+    let opened = '';
+    const allowApi: KidOSApi = {
+      ...api,
+      async evaluateNavigation() { return 'allow'; },
+      async openProtectedBrowser(url) { opened = url; },
+    };
+    render(<KidOSHomeShell api={allowApi} onOpenParentWorkspace={() => undefined} />);
+    const input = screen.getByLabelText('Search KidOS safely');
+    fireEvent.change(input, { target: { value: 'planets' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Opened through KidOS Safe Browser.')).toBeTruthy();
+    expect(new URL(opened).searchParams.get('safe')).toBe('active');
+  });
+
+  it('moves keyboard focus to parent verification when Parent is selected', () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: /Parent/i }));
+    expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement);
+  });
+
   it('does not claim active protection when live status cannot be read', async () => {
     const offlineApi = { ...api, guardianStatus: async () => { throw new Error('offline'); } } as KidOSApi;
     render(<KidOSHomeShell api={offlineApi} onOpenParentWorkspace={() => undefined} />);
