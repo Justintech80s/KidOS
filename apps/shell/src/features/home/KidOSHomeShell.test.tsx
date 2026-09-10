@@ -49,7 +49,9 @@ describe('KidOSHomeShell', () => {
 
   it('moves keyboard focus to parent verification when Parent is selected', () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
-    fireEvent.click(screen.getByRole('button', { name: /Parent/i }));
+    const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
+    expect(parentButton).toBeTruthy();
+    fireEvent.click(parentButton!);
     expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement);
   });
 
