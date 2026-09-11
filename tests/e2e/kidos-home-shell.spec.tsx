@@ -65,13 +65,34 @@ describe('KidOS 2026 protected child shell', () => {
     expect(new URL(opened[0]).searchParams.get('safe')).toBe('active');
   });
 
-  it('routes Parent to the protected PIN entry point', async () => {
+  it('routes Parent to the dedicated protected PIN entry point', async () => {
     render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
     const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
     expect(parentButton).toBeTruthy();
     fireEvent.click(parentButton!);
+    expect(screen.getByTestId('kidos-parent-screen')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Parent Access' })).toBeTruthy();
     await waitFor(() => {
       expect(document.activeElement).toBe(screen.getByLabelText('Parent PIN'));
     });
+  });
+
+  it('creates a protected workspace without bypassing the planner contract', async () => {
+    render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
+    const grid = screen.getByTestId('kidos-home-grid');
+    fireEvent.click(within(grid).getByRole('button', { name: /Create/ }));
+    const input = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(input, { target: { value: 'Build a planet story' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Safe workspace ready: Build a planet story')).toBeTruthy();
+  });
+
+  it('keeps My Apps fail-closed without an arbitrary executable launcher', () => {
+    render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
+    const grid = screen.getByTestId('kidos-home-grid');
+    fireEvent.click(within(grid).getByRole('button', { name: /My Apps/ }));
+    expect(screen.getByTestId('kidos-apps-screen')).toBeTruthy();
+    expect(screen.getByText(/trusted approved-app launch capability/)).toBeTruthy();
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 });
