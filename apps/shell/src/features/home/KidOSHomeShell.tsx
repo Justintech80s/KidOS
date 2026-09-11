@@ -5,8 +5,8 @@ import KidOSDock from './KidOSDock';
 import KidOSHomeScreen from './KidOSHomeScreen';
 import KidOSLearnScreen from './KidOSLearnScreen';
 import KidOSMyAppsScreen from './KidOSMyAppsScreen';
+import KidOSParentAccess from './KidOSParentAccess';
 import KidOSPlayScreen from './KidOSPlayScreen';
-import KidOSProfileCard from './KidOSProfileCard';
 import KidOSSafeBrowserScreen from './KidOSSafeBrowserScreen';
 import KidOSSidebar, { type KidOSDestination } from './KidOSSidebar';
 import KidOSTopBar from './KidOSTopBar';
@@ -84,6 +84,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   }
 
   function openParentAccess() {
+    setActive('parent');
     setParentStatus('');
     window.requestAnimationFrame(() => parentPinRef.current?.focus());
   }
@@ -180,6 +181,16 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
             </form>
           </section>
         );
+      case 'parent':
+        return (
+          <KidOSParentAccess
+            pin={parentPin}
+            statusMessage={parentStatus}
+            inputRef={parentPinRef}
+            onPinChange={setParentPin}
+            onUnlock={() => { void requestParent(); }}
+          />
+        );
       case 'music':
         return <section className="kidos-module"><h1>Music</h1><p>Parent-approved music and creative audio tools.</p></section>;
       default:
@@ -192,17 +203,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       <KidOSSidebar active={active} onNavigate={setActive} onParentRequested={openParentAccess} />
       <section className="kidos-stage">
         <KidOSTopBar onSafeSearch={runSafeSearch} />
-        <div className="kidos-main">
-          {renderActiveScreen()}
-          <section className="kidos-module" style={{ marginTop: 18 }} aria-label="Parent access">
-            <h2>Parent access</h2>
-            <p>Guardian controls stay behind parent verification.</p>
-            <input ref={parentPinRef} aria-label="Parent PIN" type="password" inputMode="numeric" value={parentPin} onChange={(e) => setParentPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Parent PIN" />
-            <button type="button" onClick={requestParent}>Unlock Parent Workspace</button>
-            {parentStatus && <div className="kidos-module-status" role="status">{parentStatus}</div>}
-            <KidOSProfileCard profile={{ displayName: 'Alex', levelLabel: 'Explorer • Level 12' }} />
-          </section>
-        </div>
+        <div className="kidos-main">{renderActiveScreen()}</div>
         <KidOSDock onNavigate={setActive} />
       </section>
     </main>
