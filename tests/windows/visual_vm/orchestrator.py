@@ -1,8 +1,7 @@
 """KidOS visual Windows VM validation state contract.
 
-This module intentionally contains no Hyper-V or guest-control implementation yet.
-Those adapters are added by later tasks; this task defines the fail-closed state
-rules and the machine-readable result manifest they must feed.
+This module defines the fail-closed Guardian/UI rules and the machine-readable
+visual evidence manifest consumed by the Windows VM validation workflow.
 """
 
 from __future__ import annotations
@@ -10,11 +9,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 NORMAL_UI = "normal"
 RESTRICTED_UI = "restricted"
+REQUIRED_SCREENSHOTS = {"healthy-home.png", "restricted-safe-mode.png"}
 
 
 def _guardian_healthy(phase: Mapping[str, Any]) -> bool:
@@ -43,6 +43,7 @@ def evaluate_run(
 
     normal_ui = healthy_guardian and healthy_ui == NORMAL_UI
     fail_closed = (not fail_guardian_healthy) and fail_ui == RESTRICTED_UI
+    state_pass = normal_ui and fail_closed and not contradictions
 
     return {
         "guardian": {
@@ -55,9 +56,32 @@ def evaluate_run(
         "fail_closed": fail_closed,
         "screenshots": [],
         "video": None,
+        "video_available": False,
+        "visual_evidence_complete": False,
         "contradictions": contradictions,
-        "overall_pass": normal_ui and fail_closed and not contradictions,
+        "state_pass": state_pass,
+        "overall_pass": state_pass,
     }
+
+
+def attach_visual_evidence(
+    result: Mapping[str, Any],
+    screenshots: Sequence[str | Path],
+    video: str | Path | None,
+) -> dict[str, Any]:
+    """Attach evidence and fail closed unless both required screenshots exist."""
+    updated = dict(result)
+    screenshot_values = [str(path) for path in screenshots]
+    screenshot_names = {Path(path).name for path in screenshot_values}
+    visual_evidence_complete = REQUIRED_SCREENSHOTS.issubset(screenshot_names)
+    video_value = None if video is None else str(video)
+
+    updated["screenshots"] = screenshot_values
+    updated["video"] = video_value
+    updated["video_available"] = video_value is not None
+    updated["visual_evidence_complete"] = visual_evidence_complete
+    updated["overall_pass"] = bool(updated.get("state_pass")) and visual_evidence_complete
+    return updated
 
 
 def write_result_manifest(artifact_dir: Path, result: Mapping[str, Any]) -> Path:
@@ -78,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse the stable command-line inputs used by the later VM adapters."""
+    """Parse the stable command-line inputs used by the VM adapters."""
     return build_parser().parse_args(argv)
 
 
