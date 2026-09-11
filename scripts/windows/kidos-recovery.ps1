@@ -21,10 +21,10 @@ $classifierSvc = Get-Service -Name $classifier -ErrorAction SilentlyContinue
 
 if ($StatusOnly) {
   [pscustomobject]@{
-    Guardian = if ($guardianSvc) { $guardianSvc.Status } else { "Missing" }
-    Classifier = if ($classifierSvc) { $classifierSvc.Status } else { "Missing" }
+    Guardian = if ($guardianSvc) { $guardianSvc.Status.ToString() } else { "Missing" }
+    Classifier = if ($classifierSvc) { $classifierSvc.Status.ToString() } else { "Missing" }
     RecoveryRequired = Test-Path $flag
-  }
+  } | ConvertTo-Json -Compress
   exit 0
 }
 
