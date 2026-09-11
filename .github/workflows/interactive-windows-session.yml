@@ -1,6 +1,9 @@
 name: KidOS Interactive Windows Session Validation
 
 on:
+  push:
+    branches:
+      - feat/visual-windows-vm-validation
   workflow_dispatch:
     inputs:
       vm_name:
@@ -41,9 +44,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/visual-vm-host | Out-Null
           $result = ./tests/windows/visual_vm/hyperv.ps1 `
-            -VMName "${{ inputs.vm_name }}" `
+            -VMName "${{ inputs.vm_name || 'KidOS-Visual-Test' }}" `
             -Operation reset `
-            -SnapshotName "${{ inputs.snapshot_name }}"
+            -SnapshotName "${{ inputs.snapshot_name || 'KidOS-Clean' }}"
           $result | Set-Content artifacts/visual-vm-host/hyperv-reset.json -Encoding UTF8
           Get-Content artifacts/visual-vm-host/hyperv-reset.json
 
@@ -76,10 +79,10 @@ jobs:
           $artifactDir = Join-Path $PWD "artifacts/visual-vm"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
-          $installer = "${{ inputs.installer_path }}"
+          $installer = "${{ inputs.installer_path || '' }}"
           $healthy = ./tests/windows/visual_vm/guest-validate.ps1 `
             -InstallerPath $installer `
-            -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}" `
+            -ExpectedKidOSExe "${{ inputs.expected_kidos_exe || 'KidOS.exe' }}" `
             -DetectedUiState normal
           $healthy | Set-Content (Join-Path $artifactDir "healthy-guardian.json") -Encoding UTF8
           $healthyObject = $healthy | ConvertFrom-Json
@@ -95,7 +98,7 @@ jobs:
             ArtifactDir = $artifactDir
             Label = "healthy-home"
           }
-          if ("${{ inputs.record_video }}" -eq "true") {
+          if ("${{ github.event_name == 'push' || inputs.record_video }}" -eq "true") {
             $captureArgs.RecordVideo = $true
           }
           $capture = ./tests/windows/visual_vm/capture.ps1 @captureArgs
@@ -114,7 +117,7 @@ jobs:
             Start-Sleep -Seconds 5
 
             $restricted = ./tests/windows/visual_vm/guest-validate.ps1 `
-              -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}" `
+              -ExpectedKidOSExe "${{ inputs.expected_kidos_exe || 'KidOS.exe' }}" `
               -DetectedUiState restricted
             $restricted | Set-Content (Join-Path $artifactDir "restricted-guardian.json") -Encoding UTF8
             $restrictedObject = $restricted | ConvertFrom-Json
@@ -143,7 +146,7 @@ jobs:
         shell: pwsh
         run: |
           python tests/windows/visual_vm/orchestrator.py `
-            --vm-name "${{ inputs.vm_name }}" `
+            --vm-name "${{ inputs.vm_name || 'KidOS-Visual-Test' }}" `
             --installer "${{ inputs.installer_path || 'existing-install' }}" `
             --artifact-dir artifacts/visual-vm
 
