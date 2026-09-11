@@ -28,7 +28,9 @@ jobs:
       - name: Verify packaging metadata
         run: node tests/packaging/tauri-config.test.mjs
       - name: Verify production hardening invariants
-        run: node tests/security/release-hardening.test.mjs
+        run: |
+          node tests/security/release-hardening.test.mjs
+          node tests/security/windows-code-signing-gate.test.mjs
       - name: Verify Windows PowerShell 5.1 installer credentials
         shell: pwsh
         run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\tests\windows\installer-credential-compat.ps1
