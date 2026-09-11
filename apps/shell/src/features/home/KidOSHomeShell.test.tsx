@@ -15,6 +15,12 @@ const api: KidOSApi = {
   async removeWindowsLockdown() { return { state: 'unmanaged', capability }; },
 };
 
+function openParent() {
+  const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
+  expect(parentButton).toBeTruthy();
+  fireEvent.click(parentButton!);
+}
+
 afterEach(cleanup);
 
 describe('KidOSHomeShell', () => {
@@ -81,12 +87,44 @@ describe('KidOSHomeShell', () => {
     expect(new URL(opened).searchParams.get('safe')).toBe('active');
   });
 
-  it('moves keyboard focus to parent verification when Parent is selected', async () => {
+  it('opens the dedicated Parent Access screen and moves keyboard focus to the PIN', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
-    const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
-    expect(parentButton).toBeTruthy();
-    fireEvent.click(parentButton!);
+    openParent();
+    expect(screen.getByRole('heading', { name: 'Parent Access' })).toBeTruthy();
+    expect(screen.getByTestId('kidos-parent-screen')).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement));
+  });
+
+  it('does not open the parent workspace when verification is unavailable', async () => {
+    let opened = false;
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => { opened = true; }} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    expect(await screen.findByText('Parent verification is available in the installed Windows build.')).toBeTruthy();
+    expect(opened).toBe(false);
+  });
+
+  it('opens the parent workspace only after successful PIN verification', async () => {
+    let opened = false;
+    const parentApi: KidOSApi = { ...api, async verifyParentPin() { return { authorized: true, locked: false }; } };
+    render(<KidOSHomeShell api={parentApi} onOpenParentWorkspace={() => { opened = true; }} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '2468' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    await waitFor(() => expect(opened).toBe(true));
+  });
+
+  it.each([
+    [{ authorized: false, locked: true }, 'Parent PIN is temporarily locked.'],
+    [{ authorized: false, locked: false }, 'Parent PIN was not accepted.'],
+  ])('keeps Parent Access locked for rejected verification %#', async (verification, message) => {
+    const parentApi: KidOSApi = { ...api, async verifyParentPin() { return verification; } };
+    render(<KidOSHomeShell api={parentApi} onOpenParentWorkspace={() => undefined} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '2468' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 
   it('does not claim classifier readiness without classifier telemetry', async () => {
