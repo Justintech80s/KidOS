@@ -91,8 +91,8 @@ describe('KidOS 2026 protected child shell', () => {
     render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
     const grid = screen.getByTestId('kidos-home-grid');
     fireEvent.click(within(grid).getByRole('button', { name: /My Apps/ }));
-    expect(screen.getByTestId('kidos-apps-screen')).toBeTruthy();
-    expect(screen.getByText(/trusted approved-app launch capability/)).toBeTruthy();
-    expect(screen.queryByRole('textbox')).toBeNull();
+    const appsScreen = screen.getByTestId('kidos-apps-screen');
+    expect(within(appsScreen).getByText(/trusted approved-app launch capability/)).toBeTruthy();
+    expect(within(appsScreen).queryByRole('textbox')).toBeNull();
   });
 });
