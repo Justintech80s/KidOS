@@ -1,6 +1,8 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
+import KidOSAiScreen from './KidOSAiScreen';
+import KidOSCreateScreen from './KidOSCreateScreen';
 import KidOSDock from './KidOSDock';
 import KidOSHomeScreen from './KidOSHomeScreen';
 import KidOSLearnScreen from './KidOSLearnScreen';
@@ -21,7 +23,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [searchValue, setSearchValue] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [createValue, setCreateValue] = useState('');
-  const [workspaceTitle, setWorkspaceTitle] = useState('');
+  const [workspaceStatus, setWorkspaceStatus] = useState('');
   const [aiValue, setAiValue] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
@@ -94,27 +96,34 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     if (value) await runSafeSearch(value);
   }
 
-  async function createWorkspace(event: FormEvent) {
-    event.preventDefault();
-    const value = createValue.trim();
+  async function createWorkspace(prompt = createValue) {
+    const value = prompt.trim();
     if (!value) return;
+    setCreateValue(value);
+    setWorkspaceStatus('Preparing a safe workspace...');
     try {
       const plan = await api.planWorkspace(value);
-      setWorkspaceTitle(plan.title);
+      setWorkspaceStatus(`Safe workspace ready: ${plan.title}`);
     } catch {
-      setWorkspaceTitle('KidOS could not prepare the workspace safely.');
+      setWorkspaceStatus('KidOS could not prepare the workspace safely.');
     }
   }
 
-  function askAi(event: FormEvent) {
-    event.preventDefault();
-    const q = aiValue.trim();
+  function answerAi(query: string) {
+    const q = query.trim();
     if (!q) return;
+    setAiValue(q);
     setAiAnswer(/space|planet/i.test(q)
       ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.'
       : /math|\d/.test(q)
         ? 'Break the problem into small steps, solve one step at a time, then check your answer.'
-        : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+        : /sky/i.test(q)
+          ? 'The sky looks blue because sunlight is scattered by gases in Earth’s atmosphere, and blue light scatters strongly.'
+          : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+  }
+
+  function askAi() {
+    answerAi(aiValue);
   }
 
   async function requestParent() {
@@ -160,26 +169,23 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
         );
       case 'create':
         return (
-          <section className="kidos-module" data-testid="kidos-create-screen">
-            <h1>Create</h1>
-            <p>Stories, drawings, presentations, and beginner coding begin in a protected workspace.</p>
-            <form onSubmit={createWorkspace}>
-              <input aria-label="Ask KidOS" value={createValue} onChange={(e) => setCreateValue(e.target.value)} placeholder="Make a space story..." />
-              <button type="submit">Create</button>
-            </form>
-            {workspaceTitle && <div className="kidos-module-status">Safe workspace ready: <strong>{workspaceTitle}</strong></div>}
-          </section>
+          <KidOSCreateScreen
+            value={createValue}
+            statusMessage={workspaceStatus}
+            onValueChange={setCreateValue}
+            onSubmit={() => { void createWorkspace(); }}
+            onPrompt={(prompt) => { void createWorkspace(prompt); }}
+          />
         );
       case 'ai':
         return (
-          <section className="kidos-module" data-testid="kidos-ai-screen">
-            <h1>KidOS AI</h1>
-            <p>{aiAnswer}</p>
-            <form onSubmit={askAi}>
-              <input aria-label="Ask KidOS AI" value={aiValue} onChange={(e) => setAiValue(e.target.value)} placeholder="Why is the sky blue?" />
-              <button type="submit">Ask</button>
-            </form>
-          </section>
+          <KidOSAiScreen
+            value={aiValue}
+            answer={aiAnswer}
+            onValueChange={setAiValue}
+            onSubmit={askAi}
+            onSuggestion={answerAi}
+          />
         );
       case 'parent':
         return (
