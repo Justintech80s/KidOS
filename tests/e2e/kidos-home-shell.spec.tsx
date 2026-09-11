@@ -40,6 +40,20 @@ describe('KidOS 2026 protected child shell', () => {
     expect(screen.getByText(/Media Safety: Ready/)).toBeTruthy();
   });
 
+  it('opens the dedicated Safe Browser and keeps navigation protected', async () => {
+    const opened: string[] = [];
+    render(<KidOSHomeShell api={makeApi(opened)} onOpenParentWorkspace={() => undefined} />);
+    const grid = screen.getByTestId('kidos-home-grid');
+    fireEvent.click(within(grid).getByRole('button', { name: /Safe Browser/ }));
+    expect(screen.getByTestId('kidos-browser-screen')).toBeTruthy();
+    const input = screen.getByLabelText('Protected web address');
+    fireEvent.change(input, { target: { value: 'solar system' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Opened through KidOS Safe Browser.')).toBeTruthy();
+    expect(opened).toHaveLength(1);
+    expect(new URL(opened[0]).searchParams.get('safe')).toBe('active');
+  });
+
   it('enforces SafeSearch before an allowed Google search opens', async () => {
     const opened: string[] = [];
     render(<KidOSHomeShell api={makeApi(opened)} onOpenParentWorkspace={() => undefined} />);
