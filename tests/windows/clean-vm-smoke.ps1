@@ -52,6 +52,24 @@ function Wait-ServiceRunning([string]$Name, [int]$Seconds = 45) {
   throw "Service '$Name' did not reach Running state."
 }
 
+function Wait-KidOSUninstalled([int]$Seconds = 120) {
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  do {
+    $guardian = Get-Service KidOSGuardian -ErrorAction SilentlyContinue
+    $classifier = Get-Service KidOSMediaClassifier -ErrorAction SilentlyContinue
+    $recoveryTask = Get-ScheduledTask -TaskName "KidOS Guardian Recovery" -ErrorAction SilentlyContinue
+
+    if (-not $guardian -and -not $classifier -and -not $recoveryTask) {
+      return
+    }
+
+    Start-Sleep -Seconds 2
+  } while ((Get-Date) -lt $deadline)
+
+  Write-KidOSDiagnostics -Stage "uninstall completion timeout"
+  throw "KidOS uninstall did not remove protection services and the recovery task within $Seconds seconds."
+}
+
 Write-Host "=== KidOS clean Windows VM smoke test ==="
 Assert-True (Test-Path $InstallerPath) "Installer was not found: $InstallerPath"
 
@@ -174,8 +192,15 @@ Assert-True (Test-Path $uninstaller) "KidOS uninstaller executable was not found
 Write-Host "Uninstalling KidOS silently..."
 $uninstallExit = Invoke-ProcessWithTimeout -FilePath $uninstaller -Arguments "/S" -TimeoutSeconds 300 -Label "KidOS uninstaller"
 Assert-True ($uninstallExit -eq 0) "KidOS uninstaller exited with code $uninstallExit."
+
+# NSIS can hand work to its temporary elevated uninstaller and let the original
+# process exit before PREUNINSTALL/POSTUNINSTALL have finished. Run #102 proved
+# that an immediate service check can observe the still-running recovery phase.
+# Wait for the actual uninstall contract (both services and recovery task gone)
+# instead of treating the launcher process exit as lifecycle completion.
+Write-Host "Waiting for KidOS uninstall cleanup to finish..."
+Wait-KidOSUninstalled -Seconds 120
 Write-KidOSDiagnostics -Stage "after uninstall"
-Start-Sleep -Seconds 3
 
 Assert-True (-not (Get-Service KidOSGuardian -ErrorAction SilentlyContinue)) "Guardian service remains after uninstall."
 Assert-True (-not (Get-Service KidOSMediaClassifier -ErrorAction SilentlyContinue)) "Classifier service remains after uninstall."
