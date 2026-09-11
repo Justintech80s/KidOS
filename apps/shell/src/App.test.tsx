@@ -24,4 +24,18 @@ describe('KidOS shell', () => {
     expect(screen.getAllByRole('button', { name: /Safe Browser/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /KidOS AI/ }).length).toBeGreaterThan(0);
   });
+
+  it('never renders the production child shell when Guardian reports restricted safe mode', async () => {
+    const restrictedApi: KidOSApi = { ...healthyApi, async guardianStatus() { return 'restricted_safe_mode'; } };
+    render(<App api={restrictedApi} />);
+    expect(await screen.findByRole('heading', { name: 'Restricted safe mode' })).toBeTruthy();
+    expect(screen.queryByTestId('kidos-shell')).toBeNull();
+  });
+
+  it('fails closed into restricted safe mode when Guardian status cannot be read', async () => {
+    const unavailableApi: KidOSApi = { ...healthyApi, async guardianStatus() { throw new Error('guardian unavailable'); } };
+    render(<App api={unavailableApi} />);
+    expect(await screen.findByRole('heading', { name: 'Restricted safe mode' })).toBeTruthy();
+    expect(screen.queryByTestId('kidos-shell')).toBeNull();
+  });
 });
