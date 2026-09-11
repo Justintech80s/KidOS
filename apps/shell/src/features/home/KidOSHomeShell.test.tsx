@@ -21,6 +21,11 @@ function openParent() {
   fireEvent.click(parentButton!);
 }
 
+function openHomeDestination(name: string) {
+  const grid = screen.getByTestId('kidos-home-grid');
+  fireEvent.click(within(grid).getByRole('button', { name: new RegExp(name) }));
+}
+
 afterEach(cleanup);
 
 describe('KidOSHomeShell', () => {
@@ -41,9 +46,43 @@ describe('KidOSHomeShell', () => {
     ['My Apps', 'kidos-apps-screen'],
   ])('opens the dedicated %s production screen', (buttonName, testId) => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
-    const grid = screen.getByTestId('kidos-home-grid');
-    fireEvent.click(within(grid).getByRole('button', { name: new RegExp(buttonName) }));
+    openHomeDestination(buttonName);
     expect(screen.getByTestId(testId)).toBeTruthy();
+  });
+
+  it('creates a protected workspace through the existing planner API', async () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const input = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(input, { target: { value: 'Make a moon story' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Safe workspace ready: Make a moon story')).toBeTruthy();
+  });
+
+  it('fails closed when the protected workspace planner fails', async () => {
+    const failingApi: KidOSApi = { ...api, async planWorkspace() { throw new Error('planner offline'); } };
+    render(<KidOSHomeShell api={failingApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const input = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(input, { target: { value: 'Make a moon story' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('KidOS could not prepare the workspace safely.')).toBeTruthy();
+  });
+
+  it('renders KidOS AI answers inside the dedicated safe module', () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('KidOS AI');
+    const input = screen.getByLabelText('Ask KidOS AI');
+    fireEvent.change(input, { target: { value: 'Tell me about planets' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByText(/Earth is one of eight planets/)).toBeTruthy();
+  });
+
+  it('supports child-friendly KidOS AI suggestion prompts', () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('KidOS AI');
+    fireEvent.click(screen.getByRole('button', { name: 'Help me with math' }));
+    expect(screen.getByText(/Break the problem into small steps/)).toBeTruthy();
   });
 
   it('routes safe search through policy evaluation and keeps require-parent closed', async () => {
