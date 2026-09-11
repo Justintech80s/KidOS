@@ -12,6 +12,26 @@
   Quit
 !macroend
 
+!macro NSIS_HOOK_PREINSTALL
+  ; Real-machine upgrades can arrive while the previous Guardian and classifier
+  ; services still own their binaries. Stop/delete them from a temporary copy of
+  ; the cleanup script BEFORE NSIS attempts to overwrite Program Files.
+  DetailPrint "Preparing existing KidOS protection services for upgrade..."
+  SetOutPath "$PLUGINSDIR\KidOSUpgrade"
+  File /oname=stop-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\stop-kidos-services.ps1"
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSUpgrade\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    IfSilent kidos_preinstall_stop_silent
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not stop the existing Guardian protection services. Installation stopped before replacing protected files."
+    Abort
+kidos_preinstall_stop_silent:
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Installing KidOS Guardian and local media classifier..."
 
@@ -33,11 +53,10 @@
   File /oname=rollback-kidos.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\rollback-kidos.ps1"
 
   ; Keep the large Python/AI runtime compressed while makensis builds the
-  ; installer. Feeding thousands of loose Torch/Transformers files directly to
-  ; NSIS can exceed its mmap range. Expand the payload once at install time.
+  ; installer. The extraction helper validates the ZIP in a staging directory
+  ; and only promotes a complete classifier payload to Program Files.
   SetOutPath "$PLUGINSDIR\KidOSMediaClassifier"
   File /oname=kidos-media-classifier-bundle.zip "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier-bundle.zip"
-  CreateDirectory "$PROGRAMFILES64\KidOS\MediaClassifier"
   File /oname=extract-media-classifier.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\extract-media-classifier.ps1"
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSMediaClassifier\extract-media-classifier.ps1" -ArchivePath "$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip" -DestinationPath "$PROGRAMFILES64\KidOS\MediaClassifier"'
   Pop $0
@@ -48,10 +67,14 @@
   SetOutPath "$PROGRAMFILES64\KidOS\MediaClassifier\model"
   File /r "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\model\*.*"
 
-  ; Replace older KidOS services during upgrades. On a first install there is
-  ; nothing to remove, so do this quietly instead of showing harmless SC 1060 errors.
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\stop-kidos-services.ps1"'
-  Sleep 1000
+  ; Preinstall already removed an older service generation. Run bounded cleanup
+  ; again in case a previous partial install recreated either service.
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS could not finish removing an older protection service generation. Installation was rolled back."
+  ${EndIf}
 
   ; Protect service binaries and model files so a standard child account cannot replace them.
   nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$PROGRAMFILES64\KidOS" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" "*S-1-5-32-545:(OI)(CI)(RX)"'
@@ -109,11 +132,12 @@
 !macro NSIS_HOOK_PREUNINSTALL
   DetailPrint "Restoring the Windows child account before removing KidOS..."
 
-  ; The uninstaller carries its own recovery payload so partial installations can
-  ; always be removed even if Program Files\KidOS\Recovery was never completed.
+  ; The uninstaller carries its own recovery and cleanup payload so partial
+  ; installations can always be removed even if Program Files is damaged.
   SetOutPath "$PLUGINSDIR\KidOSRecovery"
   File /oname=restore-windows-account.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\restore-windows-account.ps1"
   File /oname=verify-restore-result.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\verify-restore-result.ps1"
+  File /oname=stop-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\stop-kidos-services.ps1"
 
   Delete "$PROGRAMDATA\KidOS\Recovery\restore-windows.result"
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
@@ -155,13 +179,18 @@ kidos_uninstall_verify_silent:
   ${EndIf}
   nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
 
-  DetailPrint "Stopping KidOS protection services..."
-  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Guardian Recovery" /F'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSMediaClassifier'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete KidOSMediaClassifier'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" stop KidOSGuardian'
-  nsExec::ExecToLog '"$SYSDIR\sc.exe" delete KidOSGuardian'
-  Sleep 1000
+  DetailPrint "Stopping KidOS protection services and waiting for file locks to clear..."
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSRecovery\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    IfSilent kidos_uninstall_stop_silent
+    MessageBox MB_ICONSTOP|MB_OK "KidOS could not fully stop its protection services. Uninstall will stop instead of leaving locked files behind."
+    Abort
+kidos_uninstall_stop_silent:
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

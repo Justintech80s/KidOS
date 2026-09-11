@@ -1,0 +1,81 @@
+name: KidOS Installer Upgrade CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/src-tauri/windows/**'
+      - 'scripts/windows/**'
+      - 'services/media-classifier/**'
+      - 'tests/windows/**'
+      - '.github/workflows/installer-upgrade-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/shell/src-tauri/windows/**'
+      - 'scripts/windows/**'
+      - 'services/media-classifier/**'
+      - 'tests/windows/**'
+      - '.github/workflows/installer-upgrade-ci.yml'
+
+jobs:
+  installer-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify installer lifecycle source contract
+        run: node tests/packaging/installer-lifecycle.test.mjs
+
+      - name: Package local media classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+
+      - name: Build Guardian
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Build Windows installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+
+      - name: Reinstall over running services and uninstall cleanly
+        shell: pwsh
+        timeout-minutes: 45
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          ./tests/windows/upgrade-reinstall-smoke.ps1 -InstallerPath $installer
+
+      - name: Capture lifecycle diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/release/installer-upgrade-diagnostics | Out-Null
+          Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue |
+            Format-List * | Out-File target/release/installer-upgrade-diagnostics/services.txt
+          Get-ScheduledTask -TaskName 'KidOS Guardian Recovery' -ErrorAction SilentlyContinue |
+            Format-List * | Out-File target/release/installer-upgrade-diagnostics/recovery-task.txt
+          Get-Process | Where-Object { $_.ProcessName -match 'KidOS|kidos|powershell|uninstall' } |
+            Format-Table Id,ProcessName,CPU,StartTime -AutoSize |
+            Out-File target/release/installer-upgrade-diagnostics/processes.txt
+          Get-ChildItem "$env:ProgramFiles\KidOS" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Out-File target/release/installer-upgrade-diagnostics/program-files.txt
+
+      - name: Upload lifecycle diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Installer-Upgrade-Diagnostics
+          path: target/release/installer-upgrade-diagnostics
+          if-no-files-found: warn
