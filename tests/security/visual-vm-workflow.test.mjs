@@ -4,6 +4,10 @@ import fs from 'node:fs';
 const workflowPath = '.github/workflows/interactive-windows-session.yml';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 
+assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- feat\/visual-windows-vm-validation/, 'workflow must self-trigger only on the visual validation branch');
+assert.match(workflow, /inputs\.vm_name \|\| 'KidOS-Visual-Test'/, 'push runs must fall back to the default VM name');
+assert.match(workflow, /inputs\.snapshot_name \|\| 'KidOS-Clean'/, 'push runs must fall back to the clean snapshot');
+assert.match(workflow, /inputs\.expected_kidos_exe \|\| 'KidOS.exe'/, 'push runs must fall back to the KidOS shell executable');
 assert.match(workflow, /vm_name:/, 'workflow must accept a VM name');
 assert.match(workflow, /installer_path:/, 'workflow must accept an installer path');
 assert.match(workflow, /prepare-hyperv-vm:/, 'workflow must have a Hyper-V host preparation job');
