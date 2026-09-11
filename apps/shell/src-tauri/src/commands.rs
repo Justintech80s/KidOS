@@ -159,3 +159,16 @@ pub fn evaluate_download(file_name: String, mime_type: String) -> String {
 pub fn get_guardian_status() -> String {
     get_guardian_status_impl().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guardian_runtime_status_is_healthy_only_when_guardian_and_policy_are_valid() {
+        assert_eq!(guardian_status_from_runtime(true, true), "healthy");
+        assert_eq!(guardian_status_from_runtime(false, true), "restricted_safe_mode");
+        assert_eq!(guardian_status_from_runtime(true, false), "restricted_safe_mode");
+        assert_eq!(guardian_status_from_runtime(false, false), "restricted_safe_mode");
+    }
+}
