@@ -7,6 +7,7 @@ import KidOSLearnScreen from './KidOSLearnScreen';
 import KidOSMyAppsScreen from './KidOSMyAppsScreen';
 import KidOSPlayScreen from './KidOSPlayScreen';
 import KidOSProfileCard from './KidOSProfileCard';
+import KidOSSafeBrowserScreen from './KidOSSafeBrowserScreen';
 import KidOSSidebar, { type KidOSDestination } from './KidOSSidebar';
 import KidOSTopBar from './KidOSTopBar';
 import KidOSWatchScreen from './KidOSWatchScreen';
@@ -87,8 +88,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     window.requestAnimationFrame(() => parentPinRef.current?.focus());
   }
 
-  async function submitSearch(event: FormEvent) {
-    event.preventDefault();
+  async function submitSearch() {
     const value = searchValue.trim();
     if (value) await runSafeSearch(value);
   }
@@ -148,15 +148,14 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
         return <KidOSMyAppsScreen />;
       case 'browser':
         return (
-          <section className="kidos-module" data-testid="kidos-browser-screen">
-            <h1>Safe Browser</h1>
-            <p>Every destination is checked by KidOS before it can open.</p>
-            <form onSubmit={submitSearch}>
-              <input aria-label="Protected web address" value={searchValue} onChange={(e) => setSearchValue(e.target.value)} placeholder="Search or enter a website" />
-              <button type="submit">Check site</button>
-            </form>
-            {searchStatus && <div className="kidos-module-status" role="status">{searchStatus}</div>}
-          </section>
+          <KidOSSafeBrowserScreen
+            value={searchValue}
+            statusMessage={searchStatus}
+            protectionStatus={status}
+            onValueChange={setSearchValue}
+            onSubmit={() => { void submitSearch(); }}
+            onShortcut={(query) => { void runSafeSearch(query); }}
+          />
         );
       case 'create':
         return (
