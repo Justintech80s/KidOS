@@ -7,6 +7,7 @@ from pathlib import Path
 
 MODULE_PATH = Path(__file__).with_name("orchestrator.py")
 HYPERV_PATH = Path(__file__).with_name("hyperv.ps1")
+GUEST_VALIDATE_PATH = Path(__file__).with_name("guest-validate.ps1")
 
 
 def load_orchestrator():
@@ -23,6 +24,12 @@ def read_hyperv_adapter():
     if not HYPERV_PATH.exists():
         raise AssertionError("hyperv.ps1 is missing")
     return HYPERV_PATH.read_text(encoding="utf-8")
+
+
+def read_guest_validator():
+    if not GUEST_VALIDATE_PATH.exists():
+        raise AssertionError("guest-validate.ps1 is missing")
+    return GUEST_VALIDATE_PATH.read_text(encoding="utf-8")
 
 
 class VisualVmOrchestratorContractTests(unittest.TestCase):
@@ -43,7 +50,6 @@ class VisualVmOrchestratorContractTests(unittest.TestCase):
     def test_healthy_then_fail_closed_sequence_passes(self):
         orchestrator = load_orchestrator()
         result = orchestrator.evaluate_run(self.healthy_phase, self.fail_closed_phase)
-
         self.assertTrue(result["guardian"]["healthy"])
         self.assertTrue(result["policy"]["valid"])
         self.assertTrue(result["normal_ui"])
@@ -54,28 +60,22 @@ class VisualVmOrchestratorContractTests(unittest.TestCase):
     def test_restricted_ui_while_guardian_is_healthy_fails(self):
         orchestrator = load_orchestrator()
         contradictory = dict(self.healthy_phase, ui_state="restricted")
-
         result = orchestrator.evaluate_run(contradictory, self.fail_closed_phase)
-
         self.assertFalse(result["overall_pass"])
         self.assertIn("healthy_guardian_showed_restricted_ui", result["contradictions"])
 
     def test_normal_ui_while_guardian_is_unavailable_fails(self):
         orchestrator = load_orchestrator()
         contradictory = dict(self.fail_closed_phase, ui_state="normal")
-
         result = orchestrator.evaluate_run(self.healthy_phase, contradictory)
-
         self.assertFalse(result["overall_pass"])
         self.assertIn("unhealthy_guardian_showed_normal_ui", result["contradictions"])
 
     def test_manifest_contains_visual_evidence_fields_and_writes_json(self):
         orchestrator = load_orchestrator()
         result = orchestrator.evaluate_run(self.healthy_phase, self.fail_closed_phase)
-
         self.assertEqual([], result["screenshots"])
         self.assertIsNone(result["video"])
-
         with tempfile.TemporaryDirectory() as tmp:
             output = orchestrator.write_result_manifest(Path(tmp), result)
             self.assertEqual(Path(tmp) / "visual-vm-result.json", output)
@@ -108,6 +108,31 @@ class HyperVLifecycleContractTests(unittest.TestCase):
         self.assertIn("passed = $true", script)
         self.assertIn("operation = $Operation", script)
         self.assertIn("vmName = $VMName", script)
+
+
+class GuestValidationContractTests(unittest.TestCase):
+    def test_healthy_guardian_requires_service_ipc_and_policy(self):
+        script = read_guest_validator()
+        self.assertIn("Get-Service KidOSGuardian", script)
+        self.assertIn("guardianIpcHealthy", script)
+        self.assertIn("policyValid", script)
+        self.assertIn("guardianHealthy", script)
+
+    def test_missing_guardian_fails_closed(self):
+        script = read_guest_validator()
+        self.assertIn("guardianServiceRunning = $false", script)
+        self.assertIn('uiState = "restricted"', script)
+
+    def test_invalid_policy_fails_closed(self):
+        script = read_guest_validator()
+        self.assertIn("if (-not $policyValid)", script)
+        self.assertIn('uiState = "restricted"', script)
+
+    def test_ui_contradiction_is_reported(self):
+        script = read_guest_validator()
+        self.assertIn("contradiction", script)
+        self.assertIn("healthy_guardian_showed_restricted_ui", script)
+        self.assertIn("unhealthy_guardian_showed_normal_ui", script)
 
 
 if __name__ == "__main__":
