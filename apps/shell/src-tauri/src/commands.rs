@@ -1,4 +1,8 @@
-use guardian_service::{load_service_state, GuardianMode, ParentDownloadMode, ParentPolicyConfig};
+#[cfg(target_os = "windows")]
+use crate::guardian_ipc;
+#[cfg(not(target_os = "windows"))]
+use guardian_service::{load_service_state, GuardianMode};
+use guardian_service::{ParentDownloadMode, ParentPolicyConfig};
 use policy_core::{
     evaluate_download as policy_evaluate_download,
     evaluate_navigation as policy_evaluate_navigation,
@@ -133,6 +137,23 @@ pub fn evaluate_download_with_policy_impl(
     decision_name(policy_evaluate_download(&context))
 }
 
+pub fn guardian_status_from_runtime(guardian_healthy: bool, policy_valid: bool) -> &'static str {
+    if guardian_healthy && policy_valid {
+        "healthy"
+    } else {
+        "restricted_safe_mode"
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_guardian_status_impl() -> &'static str {
+    match guardian_ipc::recovery_status() {
+        Ok(status) => guardian_status_from_runtime(status.guardian_healthy, status.policy_valid),
+        Err(_) => "restricted_safe_mode",
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn get_guardian_status_impl() -> &'static str {
     match load_service_state(None, None).mode {
         GuardianMode::Healthy => "healthy",
