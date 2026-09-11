@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { KidOSApi } from '../../lib/kidos-api';
 import KidOSHomeShell from './KidOSHomeShell';
@@ -22,6 +22,22 @@ describe('KidOSHomeShell', () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     const grid = screen.getByTestId('kidos-home-grid');
     expect(grid.querySelectorAll('button')).toHaveLength(8);
+  });
+
+  it.each([
+    ['Learn', 'kidos-learn-screen'],
+    ['Play', 'kidos-play-screen'],
+    ['Create', 'kidos-create-screen'],
+    ['Watch', 'kidos-watch-screen'],
+    ['Safe Browser', 'kidos-browser-screen'],
+    ['KidOS AI', 'kidos-ai-screen'],
+    ['Wellbeing', 'kidos-wellbeing-screen'],
+    ['My Apps', 'kidos-apps-screen'],
+  ])('opens the dedicated %s production screen', (buttonName, testId) => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    const grid = screen.getByTestId('kidos-home-grid');
+    fireEvent.click(within(grid).getByRole('button', { name: new RegExp(buttonName) }));
+    expect(screen.getByTestId(testId)).toBeTruthy();
   });
 
   it('routes safe search through policy evaluation and keeps require-parent closed', async () => {
