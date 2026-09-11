@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import App from './App';
 import type { KidOSApi } from './lib/kidos-api';
 
@@ -15,6 +15,10 @@ const healthyApi: KidOSApi = {
   async requestParentMaintenanceUnlock() { return { grantedAt: '2026-09-03T00:45:00Z', expiresAt: '2026-09-03T01:00:00Z' }; },
   async removeWindowsLockdown() { return { state: 'unmanaged', capability }; },
 };
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('KidOS shell', () => {
   it('shows the protected 2026 home only after Guardian is healthy', async () => {
