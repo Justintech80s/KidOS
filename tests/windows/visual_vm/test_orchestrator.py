@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 MODULE_PATH = Path(__file__).with_name("orchestrator.py")
+HYPERV_PATH = Path(__file__).with_name("hyperv.ps1")
 
 
 def load_orchestrator():
@@ -16,6 +17,12 @@ def load_orchestrator():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def read_hyperv_adapter():
+    if not HYPERV_PATH.exists():
+        raise AssertionError("hyperv.ps1 is missing")
+    return HYPERV_PATH.read_text(encoding="utf-8")
 
 
 class VisualVmOrchestratorContractTests(unittest.TestCase):
@@ -74,6 +81,33 @@ class VisualVmOrchestratorContractTests(unittest.TestCase):
             self.assertEqual(Path(tmp) / "visual-vm-result.json", output)
             stored = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(result, stored)
+
+
+class HyperVLifecycleContractTests(unittest.TestCase):
+    def test_adapter_exposes_only_expected_operations(self):
+        script = read_hyperv_adapter()
+        self.assertIn("ValidateSet(\"prepare\", \"start\", \"reset\", \"stop\")", script)
+        self.assertIn("[string]$VMName", script)
+        self.assertIn("[string]$Operation", script)
+
+    def test_adapter_fails_closed_when_vm_does_not_exist(self):
+        script = read_hyperv_adapter()
+        self.assertIn("Get-VM -Name $VMName -ErrorAction SilentlyContinue", script)
+        self.assertIn('throw "Hyper-V VM not found: $VMName"', script)
+
+    def test_reset_requires_named_snapshot_before_restore(self):
+        script = read_hyperv_adapter()
+        self.assertIn("Get-VMSnapshot -VMName $VMName -Name $SnapshotName", script)
+        self.assertIn('throw "Required Hyper-V snapshot not found:', script)
+        self.assertIn("Restore-VMSnapshot", script)
+        self.assertIn("-Confirm:$false", script)
+
+    def test_adapter_emits_structured_status(self):
+        script = read_hyperv_adapter()
+        self.assertIn("ConvertTo-Json", script)
+        self.assertIn("passed = $true", script)
+        self.assertIn("operation = $Operation", script)
+        self.assertIn("vmName = $VMName", script)
 
 
 if __name__ == "__main__":
