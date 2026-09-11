@@ -48,6 +48,24 @@ describe('KidOSHomeShell', () => {
     expect(await screen.findByText('Parent approval required.')).toBeTruthy();
   });
 
+  it('blocks a destination when KidOS policy returns block', async () => {
+    const blockedApi: KidOSApi = { ...api, async evaluateNavigation() { return 'block'; } };
+    render(<KidOSHomeShell api={blockedApi} onOpenParentWorkspace={() => undefined} />);
+    const input = screen.getByLabelText('Search KidOS safely');
+    fireEvent.change(input, { target: { value: 'unsafe.example' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Blocked by KidOS safety policy.')).toBeTruthy();
+  });
+
+  it('does not open anything when the protected browser bridge is unavailable', async () => {
+    const allowWithoutBrowser: KidOSApi = { ...api, async evaluateNavigation() { return 'allow'; } };
+    render(<KidOSHomeShell api={allowWithoutBrowser} onOpenParentWorkspace={() => undefined} />);
+    const input = screen.getByLabelText('Search KidOS safely');
+    fireEvent.change(input, { target: { value: 'planets' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText(/Safe browser is unavailable/)).toBeTruthy();
+  });
+
   it('enforces provider safe-search settings before opening an allowed search', async () => {
     let opened = '';
     const allowApi: KidOSApi = {
