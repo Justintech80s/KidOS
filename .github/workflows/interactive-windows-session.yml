@@ -3,35 +3,223 @@ name: KidOS Interactive Windows Session Validation
 on:
   workflow_dispatch:
     inputs:
+      vm_name:
+        description: "Hyper-V VM that hosts the disposable KidOS visual test environment"
+        required: true
+        default: "KidOS-Visual-Test"
+      snapshot_name:
+        description: "Clean Hyper-V snapshot restored before visual validation"
+        required: true
+        default: "KidOS-Clean"
+      installer_path:
+        description: "Optional KidOS installer path inside the guest VM; leave blank to validate an existing install"
+        required: false
+        default: ""
       child_user:
-        description: "Windows child account that was used for the interactive KidOS login"
+        description: "Windows child account used for the interactive KidOS login"
         required: true
         default: "KidOSInteractiveChild"
       expected_kidos_exe:
         description: "KidOS shell executable name"
         required: true
         default: "KidOS.exe"
+      record_video:
+        description: "Also record the healthy KidOS desktop when ffmpeg is available in the VM"
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  verify-interactive-session:
+  prepare-hyperv-vm:
     runs-on: [self-hosted, Windows, X64, kidos-interactive-test]
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify rebooted KidOS child session
+      - name: Reset and start disposable KidOS VM
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $result = ./tests/windows/interactive-session-verify.ps1 `
-            -ChildUser "${{ inputs.child_user }}" `
-            -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}"
-          $result | Set-Content artifacts/interactive-session-result.json -Encoding UTF8
-          Get-Content artifacts/interactive-session-result.json
+          New-Item -ItemType Directory -Force -Path artifacts/visual-vm-host | Out-Null
+          $result = ./tests/windows/visual_vm/hyperv.ps1 `
+            -VMName "${{ inputs.vm_name }}" `
+            -Operation reset `
+            -SnapshotName "${{ inputs.snapshot_name }}"
+          $result | Set-Content artifacts/visual-vm-host/hyperv-reset.json -Encoding UTF8
+          Get-Content artifacts/visual-vm-host/hyperv-reset.json
 
-      - name: Upload interactive validation result
+      - name: Upload Hyper-V preparation evidence
         uses: actions/upload-artifact@v4
         with:
-          name: KidOS-Interactive-Session-Validation
-          path: artifacts/interactive-session-result.json
+          name: KidOS-HyperV-Preparation
+          path: artifacts/visual-vm-host/hyperv-reset.json
+          if-no-files-found: error
+
+  visual-guest-validation:
+    needs: prepare-hyperv-vm
+    runs-on: [self-hosted, Windows, X64, kidos-visual-vm-guest]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require an interactive VM desktop
+        shell: pwsh
+        run: |
+          $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+          if ($sessionId -eq 0) {
+            throw "The kidos-visual-vm-guest runner is running in Windows Session 0. Start this test runner interactively inside the logged-in KidOS VM desktop so screenshots represent the real software UI."
+          }
+          Write-Host "Visual VM runner is interactive in Windows session $sessionId."
+
+      - name: Verify healthy Guardian and capture KidOS home
+        shell: pwsh
+        run: |
+          $artifactDir = Join-Path $PWD "artifacts/visual-vm"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $installer = "${{ inputs.installer_path }}"
+          $healthy = ./tests/windows/visual_vm/guest-validate.ps1 `
+            -InstallerPath $installer `
+            -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}" `
+            -DetectedUiState normal
+          $healthy | Set-Content (Join-Path $artifactDir "healthy-guardian.json") -Encoding UTF8
+          $healthyObject = $healthy | ConvertFrom-Json
+
+          if (-not $healthyObject.guardianServiceRunning -or
+              -not $healthyObject.guardianIpcHealthy -or
+              -not $healthyObject.guardianHealthy -or
+              -not $healthyObject.policyValid) {
+            throw "Guardian did not reach a healthy service + IPC + valid-policy state."
+          }
+
+          $captureArgs = @{
+            ArtifactDir = $artifactDir
+            Label = "healthy-home"
+          }
+          if ("${{ inputs.record_video }}" -eq "true") {
+            $captureArgs.RecordVideo = $true
+          }
+          $capture = ./tests/windows/visual_vm/capture.ps1 @captureArgs
+          $capture | Set-Content (Join-Path $artifactDir "healthy-capture.json") -Encoding UTF8
+
+          if (-not (Test-Path (Join-Path $artifactDir "healthy-home.png"))) {
+            throw "Required healthy-home.png was not captured."
+          }
+
+      - name: Exercise Guardian fail-closed mode and capture Restricted Safe Mode
+        shell: pwsh
+        run: |
+          $artifactDir = Join-Path $PWD "artifacts/visual-vm"
+          try {
+            Stop-Service KidOSGuardian -Force -ErrorAction Stop
+            Start-Sleep -Seconds 5
+
+            $restricted = ./tests/windows/visual_vm/guest-validate.ps1 `
+              -ExpectedKidOSExe "${{ inputs.expected_kidos_exe }}" `
+              -DetectedUiState restricted
+            $restricted | Set-Content (Join-Path $artifactDir "restricted-guardian.json") -Encoding UTF8
+            $restrictedObject = $restricted | ConvertFrom-Json
+
+            if ($restrictedObject.guardianServiceRunning) {
+              throw "Guardian service was expected to be stopped for the fail-closed test."
+            }
+            if ($restrictedObject.uiState -ne "restricted") {
+              throw "KidOS did not report Restricted Safe Mode while Guardian was unavailable."
+            }
+
+            $capture = ./tests/windows/visual_vm/capture.ps1 `
+              -ArtifactDir $artifactDir `
+              -Label "restricted-safe-mode"
+            $capture | Set-Content (Join-Path $artifactDir "restricted-capture.json") -Encoding UTF8
+
+            if (-not (Test-Path (Join-Path $artifactDir "restricted-safe-mode.png"))) {
+              throw "Required restricted-safe-mode.png was not captured."
+            }
+          }
+          finally {
+            Start-Service KidOSGuardian -ErrorAction SilentlyContinue
+          }
+
+      - name: Build canonical visual VM result manifest
+        shell: pwsh
+        run: |
+          python tests/windows/visual_vm/orchestrator.py `
+            --vm-name "${{ inputs.vm_name }}" `
+            --installer "${{ inputs.installer_path || 'existing-install' }}" `
+            --artifact-dir artifacts/visual-vm
+
+          @'
+          import importlib.util
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/visual-vm")
+          module_path = Path("tests/windows/visual_vm/orchestrator.py")
+          spec = importlib.util.spec_from_file_location("visual_vm_orchestrator", module_path)
+          orchestrator = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(orchestrator)
+
+          healthy_raw = json.loads((root / "healthy-guardian.json").read_text(encoding="utf-8-sig"))
+          restricted_raw = json.loads((root / "restricted-guardian.json").read_text(encoding="utf-8-sig"))
+
+          healthy = {
+              "guardian_service_running": healthy_raw["guardianServiceRunning"],
+              "guardian_ipc_healthy": healthy_raw["guardianIpcHealthy"],
+              "policy_valid": healthy_raw["policyValid"],
+              "ui_state": healthy_raw["uiState"],
+          }
+          restricted = {
+              "guardian_service_running": restricted_raw["guardianServiceRunning"],
+              "guardian_ipc_healthy": restricted_raw["guardianIpcHealthy"],
+              "policy_valid": restricted_raw["policyValid"],
+              "ui_state": restricted_raw["uiState"],
+          }
+
+          result = orchestrator.evaluate_run(healthy, restricted)
+          screenshots = [root / "healthy-home.png", root / "restricted-safe-mode.png"]
+          video = root / "KidOS-Visual-VM.mp4"
+          result = orchestrator.attach_visual_evidence(
+              result,
+              screenshots,
+              video if video.exists() else None,
+          )
+          orchestrator.write_result_manifest(root, result)
+
+          if not result["overall_pass"]:
+              raise SystemExit(f"Visual VM validation failed: {result}")
+          '@ | python -
+
+          Get-Content artifacts/visual-vm/visual-vm-result.json
+
+      - name: Require visual evidence files
+        shell: pwsh
+        run: |
+          $required = @(
+            "artifacts/visual-vm/healthy-home.png",
+            "artifacts/visual-vm/restricted-safe-mode.png",
+            "artifacts/visual-vm/visual-vm-result.json",
+            "artifacts/visual-vm/healthy-guardian.json",
+            "artifacts/visual-vm/restricted-guardian.json"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Required visual VM evidence is missing: $path"
+            }
+            if ((Get-Item -LiteralPath $path).Length -le 0) {
+              throw "Visual VM evidence is empty: $path"
+            }
+          }
+
+      - name: Upload KidOS visual Windows VM validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Visual-Windows-VM-Validation
+          path: |
+            artifacts/visual-vm/healthy-home.png
+            artifacts/visual-vm/restricted-safe-mode.png
+            artifacts/visual-vm/visual-vm-result.json
+            artifacts/visual-vm/healthy-guardian.json
+            artifacts/visual-vm/restricted-guardian.json
+            artifacts/visual-vm/healthy-capture.json
+            artifacts/visual-vm/restricted-capture.json
+            artifacts/visual-vm/KidOS-Visual-VM.mp4
           if-no-files-found: error
