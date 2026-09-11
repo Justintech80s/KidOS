@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { KidOSApi } from '../../lib/kidos-api';
 import KidOSHomeShell from './KidOSHomeShell';
@@ -15,6 +15,17 @@ const api: KidOSApi = {
   async removeWindowsLockdown() { return { state: 'unmanaged', capability }; },
 };
 
+function openParent() {
+  const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
+  expect(parentButton).toBeTruthy();
+  fireEvent.click(parentButton!);
+}
+
+function openHomeDestination(name: string) {
+  const grid = screen.getByTestId('kidos-home-grid');
+  fireEvent.click(within(grid).getByRole('button', { name: new RegExp(name) }));
+}
+
 afterEach(cleanup);
 
 describe('KidOSHomeShell', () => {
@@ -24,12 +35,80 @@ describe('KidOSHomeShell', () => {
     expect(grid.querySelectorAll('button')).toHaveLength(8);
   });
 
+  it.each([
+    ['Learn', 'kidos-learn-screen'],
+    ['Play', 'kidos-play-screen'],
+    ['Create', 'kidos-create-screen'],
+    ['Watch', 'kidos-watch-screen'],
+    ['Safe Browser', 'kidos-browser-screen'],
+    ['KidOS AI', 'kidos-ai-screen'],
+    ['Wellbeing', 'kidos-wellbeing-screen'],
+    ['My Apps', 'kidos-apps-screen'],
+  ])('opens the dedicated %s production screen', (buttonName, testId) => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination(buttonName);
+    expect(screen.getByTestId(testId)).toBeTruthy();
+  });
+
+  it('creates a protected workspace through the existing planner API', async () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const input = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(input, { target: { value: 'Make a moon story' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Safe workspace ready: Make a moon story')).toBeTruthy();
+  });
+
+  it('fails closed when the protected workspace planner fails', async () => {
+    const failingApi: KidOSApi = { ...api, async planWorkspace() { throw new Error('planner offline'); } };
+    render(<KidOSHomeShell api={failingApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const input = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(input, { target: { value: 'Make a moon story' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('KidOS could not prepare the workspace safely.')).toBeTruthy();
+  });
+
+  it('renders KidOS AI answers inside the dedicated safe module', () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('KidOS AI');
+    const input = screen.getByLabelText('Ask KidOS AI');
+    fireEvent.change(input, { target: { value: 'Tell me about planets' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByText(/Earth is one of eight planets/)).toBeTruthy();
+  });
+
+  it('supports child-friendly KidOS AI suggestion prompts', () => {
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('KidOS AI');
+    fireEvent.click(screen.getByRole('button', { name: 'Help me with math' }));
+    expect(screen.getByText(/Break the problem into small steps/)).toBeTruthy();
+  });
+
   it('routes safe search through policy evaluation and keeps require-parent closed', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     const input = screen.getByLabelText('Search KidOS safely');
     fireEvent.change(input, { target: { value: 'planets' } });
     fireEvent.submit(input.closest('form')!);
     expect(await screen.findByText('Parent approval required.')).toBeTruthy();
+  });
+
+  it('blocks a destination when KidOS policy returns block', async () => {
+    const blockedApi: KidOSApi = { ...api, async evaluateNavigation() { return 'block'; } };
+    render(<KidOSHomeShell api={blockedApi} onOpenParentWorkspace={() => undefined} />);
+    const input = screen.getByLabelText('Search KidOS safely');
+    fireEvent.change(input, { target: { value: 'unsafe.example' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText('Blocked by KidOS safety policy.')).toBeTruthy();
+  });
+
+  it('does not open anything when the protected browser bridge is unavailable', async () => {
+    const allowWithoutBrowser: KidOSApi = { ...api, async evaluateNavigation() { return 'allow'; } };
+    render(<KidOSHomeShell api={allowWithoutBrowser} onOpenParentWorkspace={() => undefined} />);
+    const input = screen.getByLabelText('Search KidOS safely');
+    fireEvent.change(input, { target: { value: 'planets' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText(/Safe browser is unavailable/)).toBeTruthy();
   });
 
   it('enforces provider safe-search settings before opening an allowed search', async () => {
@@ -47,12 +126,44 @@ describe('KidOSHomeShell', () => {
     expect(new URL(opened).searchParams.get('safe')).toBe('active');
   });
 
-  it('moves keyboard focus to parent verification when Parent is selected', async () => {
+  it('opens the dedicated Parent Access screen and moves keyboard focus to the PIN', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
-    const parentButton = screen.getByTestId('kidos-sidebar').querySelector<HTMLButtonElement>('.kidos-parent-entry');
-    expect(parentButton).toBeTruthy();
-    fireEvent.click(parentButton!);
+    openParent();
+    expect(screen.getByRole('heading', { name: 'Parent Access' })).toBeTruthy();
+    expect(screen.getByTestId('kidos-parent-screen')).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText('Parent PIN')).toBe(document.activeElement));
+  });
+
+  it('does not open the parent workspace when verification is unavailable', async () => {
+    let opened = false;
+    render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => { opened = true; }} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    expect(await screen.findByText('Parent verification is available in the installed Windows build.')).toBeTruthy();
+    expect(opened).toBe(false);
+  });
+
+  it('opens the parent workspace only after successful PIN verification', async () => {
+    let opened = false;
+    const parentApi: KidOSApi = { ...api, async verifyParentPin() { return { authorized: true, locked: false }; } };
+    render(<KidOSHomeShell api={parentApi} onOpenParentWorkspace={() => { opened = true; }} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '2468' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    await waitFor(() => expect(opened).toBe(true));
+  });
+
+  it.each([
+    [{ authorized: false, locked: true }, 'Parent PIN is temporarily locked.'],
+    [{ authorized: false, locked: false }, 'Parent PIN was not accepted.'],
+  ])('keeps Parent Access locked for rejected verification %#', async (verification, message) => {
+    const parentApi: KidOSApi = { ...api, async verifyParentPin() { return verification; } };
+    render(<KidOSHomeShell api={parentApi} onOpenParentWorkspace={() => undefined} />);
+    openParent();
+    fireEvent.change(screen.getByLabelText('Parent PIN'), { target: { value: '2468' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock Parent Workspace' }));
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 
   it('does not claim classifier readiness without classifier telemetry', async () => {

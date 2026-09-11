@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import App from './App';
 import type { KidOSApi } from './lib/kidos-api';
 
@@ -16,6 +16,10 @@ const healthyApi: KidOSApi = {
   async removeWindowsLockdown() { return { state: 'unmanaged', capability }; },
 };
 
+afterEach(() => {
+  cleanup();
+});
+
 describe('KidOS shell', () => {
   it('shows the protected 2026 home only after Guardian is healthy', async () => {
     render(<App api={healthyApi} />);
@@ -23,5 +27,19 @@ describe('KidOS shell', () => {
     expect(await screen.findByTestId('kidos-shell')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /Safe Browser/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /KidOS AI/ }).length).toBeGreaterThan(0);
+  });
+
+  it('never renders the production child shell when Guardian reports restricted safe mode', async () => {
+    const restrictedApi: KidOSApi = { ...healthyApi, async guardianStatus() { return 'restricted_safe_mode'; } };
+    render(<App api={restrictedApi} />);
+    expect(await screen.findByRole('heading', { name: 'Restricted safe mode' })).toBeTruthy();
+    expect(screen.queryByTestId('kidos-shell')).toBeNull();
+  });
+
+  it('fails closed into restricted safe mode when Guardian status cannot be read', async () => {
+    const unavailableApi: KidOSApi = { ...healthyApi, async guardianStatus() { throw new Error('guardian unavailable'); } };
+    render(<App api={unavailableApi} />);
+    expect(await screen.findByRole('heading', { name: 'Restricted safe mode' })).toBeTruthy();
+    expect(screen.queryByTestId('kidos-shell')).toBeNull();
   });
 });

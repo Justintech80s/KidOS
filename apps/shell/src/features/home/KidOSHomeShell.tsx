@@ -1,13 +1,19 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KidOSApi } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
+import KidOSAiScreen from './KidOSAiScreen';
+import KidOSCreateScreen from './KidOSCreateScreen';
 import KidOSDock from './KidOSDock';
-import KidOSGreeting from './KidOSGreeting';
-import KidOSHomeGrid from './KidOSHomeGrid';
-import KidOSProfileCard from './KidOSProfileCard';
-import KidOSSafetyStatus from './KidOSSafetyStatus';
+import KidOSHomeScreen from './KidOSHomeScreen';
+import KidOSLearnScreen from './KidOSLearnScreen';
+import KidOSMyAppsScreen from './KidOSMyAppsScreen';
+import KidOSParentAccess from './KidOSParentAccess';
+import KidOSPlayScreen from './KidOSPlayScreen';
+import KidOSSafeBrowserScreen from './KidOSSafeBrowserScreen';
 import KidOSSidebar, { type KidOSDestination } from './KidOSSidebar';
 import KidOSTopBar from './KidOSTopBar';
+import KidOSWatchScreen from './KidOSWatchScreen';
+import KidOSWellbeingScreen from './KidOSWellbeingScreen';
 import { OFFLINE_KIDOS_STATUS, normalizeKidOSSystemStatus, type KidOSSystemStatus } from './system-status';
 import './kidos-shell-2026.css';
 
@@ -17,7 +23,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [searchValue, setSearchValue] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [createValue, setCreateValue] = useState('');
-  const [workspaceTitle, setWorkspaceTitle] = useState('');
+  const [workspaceStatus, setWorkspaceStatus] = useState('');
   const [aiValue, setAiValue] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
@@ -80,37 +86,44 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   }
 
   function openParentAccess() {
+    setActive('parent');
     setParentStatus('');
     window.requestAnimationFrame(() => parentPinRef.current?.focus());
   }
 
-  async function submitSearch(event: FormEvent) {
-    event.preventDefault();
+  async function submitSearch() {
     const value = searchValue.trim();
     if (value) await runSafeSearch(value);
   }
 
-  async function createWorkspace(event: FormEvent) {
-    event.preventDefault();
-    const value = createValue.trim();
+  async function createWorkspace(prompt = createValue) {
+    const value = prompt.trim();
     if (!value) return;
+    setCreateValue(value);
+    setWorkspaceStatus('Preparing a safe workspace...');
     try {
       const plan = await api.planWorkspace(value);
-      setWorkspaceTitle(plan.title);
+      setWorkspaceStatus(`Safe workspace ready: ${plan.title}`);
     } catch {
-      setWorkspaceTitle('KidOS could not prepare the workspace safely.');
+      setWorkspaceStatus('KidOS could not prepare the workspace safely.');
     }
   }
 
-  function askAi(event: FormEvent) {
-    event.preventDefault();
-    const q = aiValue.trim();
+  function answerAi(query: string) {
+    const q = query.trim();
     if (!q) return;
+    setAiValue(q);
     setAiAnswer(/space|planet/i.test(q)
       ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.'
       : /math|\d/.test(q)
         ? 'Break the problem into small steps, solve one step at a time, then check your answer.'
-        : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+        : /sky/i.test(q)
+          ? 'The sky looks blue because sunlight is scattered by gases in Earth’s atmosphere, and blue light scatters strongly.'
+          : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+  }
+
+  function askAi() {
+    answerAi(aiValue);
   }
 
   async function requestParent() {
@@ -129,24 +142,74 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     }
   }
 
+  function renderActiveScreen() {
+    switch (active) {
+      case 'home':
+        return <KidOSHomeScreen status={status} onNavigate={setActive} />;
+      case 'learn':
+        return <KidOSLearnScreen />;
+      case 'play':
+        return <KidOSPlayScreen />;
+      case 'watch':
+        return <KidOSWatchScreen />;
+      case 'wellbeing':
+        return <KidOSWellbeingScreen />;
+      case 'apps':
+        return <KidOSMyAppsScreen />;
+      case 'browser':
+        return (
+          <KidOSSafeBrowserScreen
+            value={searchValue}
+            statusMessage={searchStatus}
+            protectionStatus={status}
+            onValueChange={setSearchValue}
+            onSubmit={() => { void submitSearch(); }}
+            onShortcut={(query) => { void runSafeSearch(query); }}
+          />
+        );
+      case 'create':
+        return (
+          <KidOSCreateScreen
+            value={createValue}
+            statusMessage={workspaceStatus}
+            onValueChange={setCreateValue}
+            onSubmit={() => { void createWorkspace(); }}
+            onPrompt={(prompt) => { void createWorkspace(prompt); }}
+          />
+        );
+      case 'ai':
+        return (
+          <KidOSAiScreen
+            value={aiValue}
+            answer={aiAnswer}
+            onValueChange={setAiValue}
+            onSubmit={askAi}
+            onSuggestion={answerAi}
+          />
+        );
+      case 'parent':
+        return (
+          <KidOSParentAccess
+            pin={parentPin}
+            statusMessage={parentStatus}
+            inputRef={parentPinRef}
+            onPinChange={setParentPin}
+            onUnlock={() => { void requestParent(); }}
+          />
+        );
+      case 'music':
+        return <section className="kidos-module"><h1>Music</h1><p>Parent-approved music and creative audio tools.</p></section>;
+      default:
+        return null;
+    }
+  }
+
   return (
     <main className="kidos-shell-2026" data-testid="kidos-shell">
       <KidOSSidebar active={active} onNavigate={setActive} onParentRequested={openParentAccess} />
       <section className="kidos-stage">
         <KidOSTopBar onSafeSearch={runSafeSearch} />
-        <div className="kidos-main">
-          {active === 'home' ? <><KidOSGreeting /><KidOSHomeGrid onNavigate={setActive} /><KidOSSafetyStatus status={status} /></> :
-           active === 'browser' ? <section className="kidos-module"><h1>Safe Browser</h1><p>Every destination is checked by KidOS before it can open.</p><form onSubmit={submitSearch}><input aria-label="Protected web address" value={searchValue} onChange={(e) => setSearchValue(e.target.value)} placeholder="Search or enter a website"/><button type="submit">Check site</button></form>{searchStatus && <div className="kidos-module-status" role="status">{searchStatus}</div>}</section> :
-           active === 'create' ? <section className="kidos-module"><h1>Create</h1><p>Stories, drawings, presentations, and beginner coding begin in a protected workspace.</p><form onSubmit={createWorkspace}><input aria-label="Ask KidOS" value={createValue} onChange={(e) => setCreateValue(e.target.value)} placeholder="Make a space story..."/><button type="submit">Create</button></form>{workspaceTitle && <div className="kidos-module-status">Safe workspace ready: <strong>{workspaceTitle}</strong></div>}</section> :
-           active === 'ai' ? <section className="kidos-module"><h1>KidOS AI</h1><p>{aiAnswer}</p><form onSubmit={askAi}><input aria-label="Ask KidOS AI" value={aiValue} onChange={(e) => setAiValue(e.target.value)} placeholder="Why is the sky blue?"/><button type="submit">Ask</button></form></section> :
-           active === 'learn' ? <section className="kidos-module"><h1>Learn</h1><p>Math, science, reading, and approved learning tools live here.</p></section> :
-           active === 'play' ? <section className="kidos-module"><h1>Play</h1><p>Only games approved for this KidOS profile are available.</p></section> :
-           active === 'watch' ? <section className="kidos-module"><h1>Watch</h1><p>Videos appear only after KidOS media-safety checks.</p></section> :
-           active === 'apps' ? <section className="kidos-module"><h1>My Apps</h1><p>KidOS launches only apps already approved by a parent. Arbitrary executable paths are never accepted here.</p></section> :
-           active === 'wellbeing' ? <section className="kidos-module"><h1>Wellbeing</h1><p>Screen-time balance, accessibility, and healthy-break tools.</p></section> :
-           active === 'music' ? <section className="kidos-module"><h1>Music</h1><p>Parent-approved music and creative audio tools.</p></section> : null}
-          <section className="kidos-module" style={{ marginTop: 18 }} aria-label="Parent access"><h2>Parent access</h2><p>Guardian controls stay behind parent verification.</p><input ref={parentPinRef} aria-label="Parent PIN" type="password" inputMode="numeric" value={parentPin} onChange={(e) => setParentPin(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder="Parent PIN"/><button type="button" onClick={requestParent}>Unlock Parent Workspace</button>{parentStatus && <div className="kidos-module-status" role="status">{parentStatus}</div>}<KidOSProfileCard profile={{ displayName: 'Alex', levelLabel: 'Explorer • Level 12' }} /></section>
-        </div>
+        <div className="kidos-main">{renderActiveScreen()}</div>
         <KidOSDock onNavigate={setActive} />
       </section>
     </main>
