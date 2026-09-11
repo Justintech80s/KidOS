@@ -17,11 +17,7 @@ export default function KidOSTopBar({ onSafeSearch }: { onSafeSearch(query: stri
         <input aria-label="Search KidOS safely" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search the safe web..." />
         <button type="submit">Search</button>
       </form>
-      <div className="kidos-topbar-meta">
-        <span className="kidos-topbar-protected">🛡 Protected</span>
-        <div className="kidos-clock" aria-label="Date">{date}</div>
-        <div className="kidos-topbar-avatar" aria-label="Profile: Alex">🧑🏽</div>
-      </div>
+      <div className="kidos-clock" aria-label="Date">{date}</div>
     </header>
   );
 }
