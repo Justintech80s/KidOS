@@ -8,6 +8,7 @@ from pathlib import Path
 MODULE_PATH = Path(__file__).with_name("orchestrator.py")
 HYPERV_PATH = Path(__file__).with_name("hyperv.ps1")
 GUEST_VALIDATE_PATH = Path(__file__).with_name("guest-validate.ps1")
+CAPTURE_PATH = Path(__file__).with_name("capture.ps1")
 
 
 def load_orchestrator():
@@ -30,6 +31,12 @@ def read_guest_validator():
     if not GUEST_VALIDATE_PATH.exists():
         raise AssertionError("guest-validate.ps1 is missing")
     return GUEST_VALIDATE_PATH.read_text(encoding="utf-8")
+
+
+def read_capture_adapter():
+    if not CAPTURE_PATH.exists():
+        raise AssertionError("capture.ps1 is missing")
+    return CAPTURE_PATH.read_text(encoding="utf-8")
 
 
 class VisualVmOrchestratorContractTests(unittest.TestCase):
@@ -82,6 +89,39 @@ class VisualVmOrchestratorContractTests(unittest.TestCase):
             stored = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(result, stored)
 
+    def test_visual_evidence_requires_both_screenshots(self):
+        orchestrator = load_orchestrator()
+        result = orchestrator.attach_visual_evidence(
+            orchestrator.evaluate_run(self.healthy_phase, self.fail_closed_phase),
+            ["healthy-home.png", "restricted-safe-mode.png"],
+            None,
+        )
+        self.assertEqual(
+            ["healthy-home.png", "restricted-safe-mode.png"], result["screenshots"]
+        )
+        self.assertTrue(result["visual_evidence_complete"])
+        self.assertTrue(result["overall_pass"])
+
+    def test_missing_required_screenshot_fails_visual_evidence(self):
+        orchestrator = load_orchestrator()
+        result = orchestrator.attach_visual_evidence(
+            orchestrator.evaluate_run(self.healthy_phase, self.fail_closed_phase),
+            ["healthy-home.png"],
+            None,
+        )
+        self.assertFalse(result["visual_evidence_complete"])
+        self.assertFalse(result["overall_pass"])
+
+    def test_video_is_optional_but_reported(self):
+        orchestrator = load_orchestrator()
+        result = orchestrator.attach_visual_evidence(
+            orchestrator.evaluate_run(self.healthy_phase, self.fail_closed_phase),
+            ["healthy-home.png", "restricted-safe-mode.png"],
+            "KidOS-Visual-VM.mp4",
+        )
+        self.assertEqual("KidOS-Visual-VM.mp4", result["video"])
+        self.assertTrue(result["video_available"])
+
 
 class HyperVLifecycleContractTests(unittest.TestCase):
     def test_adapter_exposes_only_expected_operations(self):
@@ -133,6 +173,27 @@ class GuestValidationContractTests(unittest.TestCase):
         self.assertIn("contradiction", script)
         self.assertIn("healthy_guardian_showed_restricted_ui", script)
         self.assertIn("unhealthy_guardian_showed_normal_ui", script)
+
+
+class VisualCaptureContractTests(unittest.TestCase):
+    def test_capture_adapter_writes_png_for_named_state(self):
+        script = read_capture_adapter()
+        self.assertIn("System.Drawing.Bitmap", script)
+        self.assertIn("CopyFromScreen", script)
+        self.assertIn("healthy-home.png", script)
+        self.assertIn("restricted-safe-mode.png", script)
+
+    def test_capture_adapter_reports_optional_video(self):
+        script = read_capture_adapter()
+        self.assertIn("ffmpeg", script)
+        self.assertIn("videoAvailable", script)
+        self.assertIn("KidOS-Visual-VM.mp4", script)
+
+    def test_capture_adapter_emits_json_manifest(self):
+        script = read_capture_adapter()
+        self.assertIn("screenshots = @(", script)
+        self.assertIn("ConvertTo-Json", script)
+        self.assertIn("visualCapture", script)
 
 
 if __name__ == "__main__":
