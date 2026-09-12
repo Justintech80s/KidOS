@@ -61,6 +61,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path target/release/installer-upgrade-diagnostics | Out-Null
+          $failureMarker = Join-Path $env:TEMP 'KidOSInstallerFailure.txt'
+          if (Test-Path $failureMarker) {
+            Copy-Item $failureMarker target/release/installer-upgrade-diagnostics/KidOSInstallerFailure.txt -Force
+          }
           Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue |
             Format-List * | Out-File target/release/installer-upgrade-diagnostics/services.txt
           Get-ScheduledTask -TaskName 'KidOS Guardian Recovery' -ErrorAction SilentlyContinue |
