@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 # This real-machine smoke test intentionally exercises the packaged installer twice.
 # Installer-stage diagnostics are enforced separately by the packaging contract test.
+# The installer workflow also preflights cleanup under Windows PowerShell 5.1 on a clean host.
 function Assert-True([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw $Message }
 }
