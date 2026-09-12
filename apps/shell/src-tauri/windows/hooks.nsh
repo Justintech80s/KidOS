@@ -1,7 +1,14 @@
 !define KIDOS_HOOK_DIR "${__FILEDIR__}"
 
+!macro KIDOS_WRITE_FAILURE MESSAGE
+  FileOpen $9 "$TEMP\KidOSInstallerFailure.txt" w
+  FileWrite $9 "${MESSAGE}$\r$\n"
+  FileClose $9
+!macroend
+
 !macro KIDOS_ABORT_WITH_ROLLBACK MESSAGE
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\rollback-partial-install.ps1"'
+  !insertmacro KIDOS_WRITE_FAILURE "${MESSAGE}"
+  nsExec::ExecToLog '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\rollback-partial-install.ps1\"'
   ; Use a relative jump here. A macro-generated label based on __LINE__ expands
   ; differently at each insertion site inside Tauri's generated NSIS script and
   ; can leave makensis with an unresolved label.
@@ -13,16 +20,20 @@
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  ; Clear a stale diagnostic at the beginning of every install attempt.
+  Delete "$TEMP\KidOSInstallerFailure.txt"
+
   ; Real-machine upgrades can arrive while the previous Guardian and classifier
   ; services still own their binaries. Stop/delete them from a temporary copy of
   ; the cleanup script BEFORE NSIS attempts to overwrite Program Files.
   DetailPrint "Preparing existing KidOS protection services for upgrade..."
   SetOutPath "$PLUGINSDIR\KidOSUpgrade"
   File /oname=stop-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\stop-kidos-services.ps1"
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSUpgrade\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PLUGINSDIR\KidOSUpgrade\stop-kidos-services.ps1\" -TimeoutSeconds 45'
   Pop $0
   Pop $1
   ${If} $0 != 0
+    !insertmacro KIDOS_WRITE_FAILURE "KidOS could not stop the existing Guardian protection services during preinstall cleanup."
     IfSilent kidos_preinstall_stop_silent
     MessageBox MB_ICONSTOP|MB_OK "KidOS could not stop the existing Guardian protection services. Installation stopped before replacing protected files."
     Abort
@@ -58,7 +69,7 @@ kidos_preinstall_stop_silent:
   SetOutPath "$PLUGINSDIR\KidOSMediaClassifier"
   File /oname=kidos-media-classifier-bundle.zip "${KIDOS_HOOK_DIR}\..\..\..\..\services\media-classifier\dist\kidos-media-classifier-bundle.zip"
   File /oname=extract-media-classifier.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\extract-media-classifier.ps1"
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSMediaClassifier\extract-media-classifier.ps1" -ArchivePath "$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip" -DestinationPath "$PROGRAMFILES64\KidOS\MediaClassifier"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PLUGINSDIR\KidOSMediaClassifier\extract-media-classifier.ps1\" -ArchivePath \"$PLUGINSDIR\KidOSMediaClassifier\kidos-media-classifier-bundle.zip\" -DestinationPath \"$PROGRAMFILES64\KidOS\MediaClassifier\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -69,7 +80,7 @@ kidos_preinstall_stop_silent:
 
   ; Preinstall already removed an older service generation. Run bounded cleanup
   ; again in case a previous partial install recreated either service.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\stop-kidos-services.ps1\" -TimeoutSeconds 45'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -77,7 +88,7 @@ kidos_preinstall_stop_silent:
   ${EndIf}
 
   ; Protect service binaries and model files so a standard child account cannot replace them.
-  nsExec::ExecToStack '"$SYSDIR\icacls.exe" "$PROGRAMFILES64\KidOS" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" "*S-1-5-32-545:(OI)(CI)(RX)"'
+  nsExec::ExecToStack '\"$SYSDIR\icacls.exe\" \"$PROGRAMFILES64\KidOS\" /inheritance:r /grant:r \"*S-1-5-18:(OI)(CI)(F)\" \"*S-1-5-32-544:(OI)(CI)(F)\" \"*S-1-5-32-545:(OI)(CI)(RX)\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -85,7 +96,7 @@ kidos_preinstall_stop_silent:
   ${EndIf}
 
   ; Provision protected Guardian credentials from a standalone PowerShell 5.1 script.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\provision-guardian-credentials.ps1" -InstallerPath "$EXEPATH"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\provision-guardian-credentials.ps1\" -InstallerPath \"$EXEPATH\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -93,7 +104,7 @@ kidos_preinstall_stop_silent:
   ${EndIf}
 
   ; Register/start services through a standalone PowerShell 5.1 script.
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\install-kidos-services.ps1" -GuardianExe "$PROGRAMFILES64\KidOS\Guardian\kidos-guardian-host.exe" -ClassifierExe "$PROGRAMFILES64\KidOS\MediaClassifier\kidos-media-classifier.exe"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\install-kidos-services.ps1\" -GuardianExe \"$PROGRAMFILES64\KidOS\Guardian\kidos-guardian-host.exe\" -ClassifierExe \"$PROGRAMFILES64\KidOS\MediaClassifier\kidos-media-classifier.exe\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -101,14 +112,14 @@ kidos_preinstall_stop_silent:
   ${EndIf}
 
   Sleep 2500
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\verify-kidos-services.ps1"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\verify-kidos-services.ps1\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
     !insertmacro KIDOS_ABORT_WITH_ROLLBACK "KidOS Guardian did not pass its startup health check. Installation was rolled back."
   ${EndIf}
 
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\install-recovery-task.ps1" -RecoveryScript "$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\install-recovery-task.ps1\" -RecoveryScript \"$PROGRAMFILES64\KidOS\Recovery\kidos-recovery.ps1\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -121,10 +132,10 @@ kidos_preinstall_stop_silent:
   CreateDirectory "$PROGRAMDATA\KidOS\Recovery\Previous"
   IfFileExists "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" 0 +4
     CopyFiles /SILENT "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe"
-    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1" -InstallerPath "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe" -HashPath "$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.sha256"'
+    nsExec::ExecToLog '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1\" -InstallerPath \"$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.exe\" -HashPath \"$PROGRAMDATA\KidOS\Recovery\Previous\KidOS-previous.sha256\"'
   CopyFiles /SILENT "$EXEPATH" "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe"
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1" -InstallerPath "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe" -HashPath "$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.sha256"'
-  nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$PROGRAMDATA\KidOS\Recovery" /inheritance:r /grant:r "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)"'
+  nsExec::ExecToLog '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PROGRAMFILES64\KidOS\Guardian\hash-recovery-installer.ps1\" -InstallerPath \"$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.exe\" -HashPath \"$PROGRAMDATA\KidOS\Recovery\Current\KidOS-current.sha256\"'
+  nsExec::ExecToLog '\"$SYSDIR\icacls.exe\" \"$PROGRAMDATA\KidOS\Recovery\" /inheritance:r /grant:r \"SYSTEM:(OI)(CI)(F)\" \"Administrators:(OI)(CI)(F)\"'
 
   DetailPrint "KidOS Guardian and local media classifier are installed and running."
 !macroend
@@ -140,8 +151,8 @@ kidos_preinstall_stop_silent:
   File /oname=stop-kidos-services.ps1 "${KIDOS_HOOK_DIR}\..\..\..\..\scripts\windows\stop-kidos-services.ps1"
 
   Delete "$PROGRAMDATA\KidOS\Recovery\restore-windows.result"
-  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
-  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Create /TN "KidOS Restore Windows Account" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "$\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\"$PLUGINSDIR\KidOSRecovery\restore-windows-account.ps1$\"" /F'
+  nsExec::ExecToLog '\"$SYSDIR\schtasks.exe\" /Delete /TN \"KidOS Restore Windows Account\" /F'
+  nsExec::ExecToStack '\"$SYSDIR\schtasks.exe\" /Create /TN \"KidOS Restore Windows Account\" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR \"$\\\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$\\\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $\\\"$PLUGINSDIR\KidOSRecovery\restore-windows-account.ps1$\\\"\" /F'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -152,7 +163,7 @@ kidos_uninstall_task_silent:
     SetErrorLevel 1
     Quit
   ${EndIf}
-  nsExec::ExecToStack '"$SYSDIR\schtasks.exe" /Run /TN "KidOS Restore Windows Account"'
+  nsExec::ExecToStack '\"$SYSDIR\schtasks.exe\" /Run /TN \"KidOS Restore Windows Account\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -166,7 +177,7 @@ kidos_uninstall_start_silent:
 
   ; Give the SYSTEM task time to remove Assigned Access and write its result.
   Sleep 5000
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSRecovery\verify-restore-result.ps1"'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PLUGINSDIR\KidOSRecovery\verify-restore-result.ps1\"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -177,10 +188,10 @@ kidos_uninstall_verify_silent:
     SetErrorLevel 1
     Quit
   ${EndIf}
-  nsExec::ExecToLog '"$SYSDIR\schtasks.exe" /Delete /TN "KidOS Restore Windows Account" /F'
+  nsExec::ExecToLog '\"$SYSDIR\schtasks.exe\" /Delete /TN \"KidOS Restore Windows Account\" /F'
 
   DetailPrint "Stopping KidOS protection services and waiting for file locks to clear..."
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\KidOSRecovery\stop-kidos-services.ps1" -TimeoutSeconds 45'
+  nsExec::ExecToStack '\"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$PLUGINSDIR\KidOSRecovery\stop-kidos-services.ps1\" -TimeoutSeconds 45'
   Pop $0
   Pop $1
   ${If} $0 != 0
