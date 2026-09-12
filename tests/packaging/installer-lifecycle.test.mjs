@@ -35,4 +35,7 @@ assert.match(hooks, /KidOSInstallerFailure\.txt/, 'fail-closed installer exits m
 assert.match(hooks, /FileWrite/, 'installer failure diagnostics must write the failing stage/message to disk');
 assert.match(upgradeWorkflow, /KidOSInstallerFailure\.txt/, 'installer upgrade CI must capture the persisted installer failure diagnostic');
 
+assert.match(upgradeWorkflow, /Clean-host PowerShell 5\.1 service cleanup preflight/, 'installer upgrade CI must exercise service cleanup on a clean Windows host before packaging');
+assert.match(upgradeWorkflow, /WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe[\s\S]*stop-kidos-services\.ps1/, 'clean-host cleanup preflight must use Windows PowerShell 5.1, matching the NSIS runtime');
+
 console.log('KidOS installer lifecycle contract passed.');
