@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const hooks = fs.readFileSync('apps/shell/src-tauri/windows/hooks.nsh', 'utf8');
 const stopScript = fs.readFileSync('scripts/windows/stop-kidos-services.ps1', 'utf8');
 const extractor = fs.readFileSync('scripts/windows/extract-media-classifier.ps1', 'utf8');
+const upgradeWorkflow = fs.readFileSync('.github/workflows/installer-upgrade-ci.yml', 'utf8');
 
 const preStart = hooks.indexOf('!macro NSIS_HOOK_PREINSTALL');
 const postStart = hooks.indexOf('!macro NSIS_HOOK_POSTINSTALL');
@@ -29,5 +30,9 @@ assert(preUninstall >= 0 && postUninstall > preUninstall, 'uninstall hooks are m
 const uninstallBody = hooks.slice(preUninstall, postUninstall);
 assert.match(uninstallBody, /stop-kidos-services\.ps1/, 'uninstall must use bounded service/process cleanup');
 assert.match(uninstallBody, /ExecToStack[\s\S]*stop-kidos-services\.ps1/, 'uninstall must wait for service/process cleanup before file deletion');
+
+assert.match(hooks, /KidOSInstallerFailure\.txt/, 'fail-closed installer exits must persist a stage-specific diagnostic before rollback');
+assert.match(hooks, /FileWrite/, 'installer failure diagnostics must write the failing stage/message to disk');
+assert.match(upgradeWorkflow, /KidOSInstallerFailure\.txt/, 'installer upgrade CI must capture the persisted installer failure diagnostic');
 
 console.log('KidOS installer lifecycle contract passed.');
