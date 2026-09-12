@@ -39,6 +39,15 @@ jobs:
       - name: Verify installer lifecycle source contract
         run: node tests/packaging/installer-lifecycle.test.mjs
 
+      - name: Clean-host PowerShell 5.1 service cleanup preflight
+        shell: pwsh
+        run: |
+          $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\windows\stop-kidos-services.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clean-host stop-kidos-services.ps1 preflight failed with exit code $LASTEXITCODE."
+          }
+
       - name: Package local media classifier
         shell: pwsh
         run: ./scripts/windows/package-media-classifier.ps1
