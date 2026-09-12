@@ -4,6 +4,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# This real-machine smoke test intentionally exercises the packaged installer twice.
+# Installer-stage diagnostics are enforced separately by the packaging contract test.
 function Assert-True([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw $Message }
 }
