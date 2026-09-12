@@ -4,6 +4,26 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Remove-KidOSRecoveryTask {
+  # Query the scheduler through the PowerShell ScheduledTasks provider so a
+  # missing KidOS task is a normal clean-install state instead of native stderr.
+  # A scheduler query failure still throws and keeps upgrade cleanup fail-closed.
+  $tasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object {
+    $_.TaskName -eq 'KidOS Guardian Recovery' -and $_.TaskPath -eq '\'
+  })
+
+  foreach ($task in $tasks) {
+    Unregister-ScheduledTask -InputObject $task -Confirm:$false -ErrorAction Stop
+  }
+
+  $remaining = @(Get-ScheduledTask -ErrorAction Stop | Where-Object {
+    $_.TaskName -eq 'KidOS Guardian Recovery' -and $_.TaskPath -eq '\'
+  })
+  if ($remaining.Count -ne 0) {
+    throw 'KidOS Guardian Recovery task is still registered after cleanup.'
+  }
+}
+
 function Wait-KidOSServiceGone([string]$Name, [int]$Seconds) {
   $deadline = (Get-Date).AddSeconds($Seconds)
   do {
@@ -58,7 +78,7 @@ function Wait-KidOSProcessGone([string]$ProcessName, [int]$Seconds) {
 try {
   # Disable recovery first so it cannot restart Guardian while an upgrade or
   # uninstall deliberately stops the protection services.
-  & "$env:SystemRoot\System32\schtasks.exe" /Delete /TN 'KidOS Guardian Recovery' /F 2>$null | Out-Null
+  Remove-KidOSRecoveryTask
 
   Stop-AndDeleteKidOSService -Name 'KidOSMediaClassifier' -Seconds $TimeoutSeconds
   Stop-AndDeleteKidOSService -Name 'KidOSGuardian' -Seconds $TimeoutSeconds
