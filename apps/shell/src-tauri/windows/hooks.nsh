@@ -202,6 +202,12 @@ kidos_uninstall_stop_silent:
     SetErrorLevel 1
     Quit
   ${EndIf}
+
+  ; These payloads are created by installer hooks rather than Tauri's generated
+  ; file list. Remove them here, after account recovery and service shutdown,
+  ; while the elevated uninstaller still owns the lifecycle cleanup.
+  RMDir /r "$PROGRAMFILES64\KidOS\MediaClassifier"
+  RMDir /r "$PROGRAMFILES64\KidOS\Recovery"
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
