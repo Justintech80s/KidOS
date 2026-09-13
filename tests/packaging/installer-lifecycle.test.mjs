@@ -31,6 +31,15 @@ const uninstallBody = hooks.slice(preUninstall, postUninstall);
 assert.match(uninstallBody, /stop-kidos-services\.ps1/, 'uninstall must use bounded service/process cleanup');
 assert.match(uninstallBody, /ExecToStack[\s\S]*stop-kidos-services\.ps1/, 'uninstall must wait for service/process cleanup before file deletion');
 
+const restoreVerifyIndex = uninstallBody.indexOf('verify-restore-result.ps1');
+const stopCleanupIndex = uninstallBody.lastIndexOf('stop-kidos-services.ps1');
+const classifierDeleteIndex = uninstallBody.indexOf('RMDir /r "$PROGRAMFILES64\\KidOS\\MediaClassifier"');
+const recoveryDeleteIndex = uninstallBody.indexOf('RMDir /r "$PROGRAMFILES64\\KidOS\\Recovery"');
+assert(restoreVerifyIndex >= 0, 'uninstall must verify Windows account recovery before deleting recovery payloads');
+assert(stopCleanupIndex > restoreVerifyIndex, 'uninstall must stop KidOS services only after Windows account recovery is verified');
+assert(classifierDeleteIndex > stopCleanupIndex, 'uninstall must delete the hook-created MediaClassifier payload after bounded service cleanup');
+assert(recoveryDeleteIndex > stopCleanupIndex, 'uninstall must delete the hook-created Recovery payload after bounded service cleanup');
+
 assert.match(hooks, /KidOSInstallerFailure\.txt/, 'fail-closed installer exits must persist a stage-specific diagnostic before rollback');
 assert.match(hooks, /FileWrite/, 'installer failure diagnostics must write the failing stage/message to disk');
 assert.match(upgradeWorkflow, /KidOSInstallerFailure\.txt/, 'installer upgrade CI must capture the persisted installer failure diagnostic');
