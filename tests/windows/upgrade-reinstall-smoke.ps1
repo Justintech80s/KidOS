@@ -60,14 +60,21 @@ function Find-KidOSUninstaller {
 
 function Wait-Uninstalled([int]$Seconds = 150) {
   $deadline = (Get-Date).AddSeconds($Seconds)
+  $kidOSRoot = Join-Path $env:ProgramFiles 'KidOS'
+  $guardianDir = Join-Path $kidOSRoot 'Guardian'
+  $classifierDir = Join-Path $kidOSRoot 'MediaClassifier'
+  $recoveryDir = Join-Path $kidOSRoot 'Recovery'
   do {
     $guardian = Get-Service KidOSGuardian -ErrorAction SilentlyContinue
     $classifier = Get-Service KidOSMediaClassifier -ErrorAction SilentlyContinue
     $task = Get-ScheduledTask -TaskName 'KidOS Guardian Recovery' -ErrorAction SilentlyContinue
-    if (-not $guardian -and -not $classifier -and -not $task) { return }
+    $filesystemClean = -not (Test-Path $guardianDir) -and
+      -not (Test-Path $classifierDir) -and
+      -not (Test-Path $recoveryDir)
+    if (-not $guardian -and -not $classifier -and -not $task -and $filesystemClean) { return }
     Start-Sleep -Seconds 2
   } while ((Get-Date) -lt $deadline)
-  throw 'KidOS uninstall did not complete service/task cleanup.'
+  throw 'KidOS uninstall did not complete service/task/filesystem cleanup.'
 }
 
 Assert-True (Test-Path $InstallerPath) "Installer missing: $InstallerPath"
