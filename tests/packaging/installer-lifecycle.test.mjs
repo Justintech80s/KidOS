@@ -53,7 +53,9 @@ const waitUninstalledStart = normalizedUpgradeSmoke.indexOf('function Wait-Unins
 const waitUninstalledEnd = normalizedUpgradeSmoke.indexOf('\n}\n', waitUninstalledStart);
 assert(waitUninstalledStart >= 0 && waitUninstalledEnd > waitUninstalledStart, 'upgrade smoke test must define Wait-Uninstalled');
 const waitUninstalledBody = normalizedUpgradeSmoke.slice(waitUninstalledStart, waitUninstalledEnd);
-assert.match(waitUninstalledBody, /KidOS[\\/]Guardian|KidOS\\Guardian/, 'upgrade smoke must wait for Guardian filesystem cleanup, not only service removal');
-assert.match(waitUninstalledBody, /KidOS[\\/]MediaClassifier|KidOS\\MediaClassifier/, 'upgrade smoke must wait for classifier filesystem cleanup, not only service removal');
+assert.match(waitUninstalledBody, /\$guardianDir\s*=\s*Join-Path\s+\$kidOSRoot\s+'Guardian'/, 'upgrade smoke must define the Guardian cleanup path');
+assert.match(waitUninstalledBody, /\$classifierDir\s*=\s*Join-Path\s+\$kidOSRoot\s+'MediaClassifier'/, 'upgrade smoke must define the classifier cleanup path');
+assert.match(waitUninstalledBody, /Test-Path\s+\$guardianDir/, 'upgrade smoke must wait for Guardian filesystem cleanup, not only service removal');
+assert.match(waitUninstalledBody, /Test-Path\s+\$classifierDir/, 'upgrade smoke must wait for classifier filesystem cleanup, not only service removal');
 
 console.log('KidOS installer lifecycle contract passed.');
