@@ -6,6 +6,7 @@ const stopScript = fs.readFileSync('scripts/windows/stop-kidos-services.ps1', 'u
 const extractor = fs.readFileSync('scripts/windows/extract-media-classifier.ps1', 'utf8');
 const upgradeWorkflow = fs.readFileSync('.github/workflows/installer-upgrade-ci.yml', 'utf8');
 const upgradeSmoke = fs.readFileSync('tests/windows/upgrade-reinstall-smoke.ps1', 'utf8');
+const normalizedUpgradeSmoke = upgradeSmoke.replace(/\r\n/g, '\n');
 
 const preStart = hooks.indexOf('!macro NSIS_HOOK_PREINSTALL');
 const postStart = hooks.indexOf('!macro NSIS_HOOK_POSTINSTALL');
@@ -48,10 +49,10 @@ assert.match(upgradeWorkflow, /KidOSInstallerFailure\.txt/, 'installer upgrade C
 assert.match(upgradeWorkflow, /Clean-host PowerShell 5\.1 service cleanup preflight/, 'installer upgrade CI must exercise service cleanup on a clean Windows host before packaging');
 assert.match(upgradeWorkflow, /WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe[\s\S]*stop-kidos-services\.ps1/, 'clean-host cleanup preflight must use Windows PowerShell 5.1, matching the NSIS runtime');
 
-const waitUninstalledStart = upgradeSmoke.indexOf('function Wait-Uninstalled');
-const waitUninstalledEnd = upgradeSmoke.indexOf('\n}\n', waitUninstalledStart);
+const waitUninstalledStart = normalizedUpgradeSmoke.indexOf('function Wait-Uninstalled');
+const waitUninstalledEnd = normalizedUpgradeSmoke.indexOf('\n}\n', waitUninstalledStart);
 assert(waitUninstalledStart >= 0 && waitUninstalledEnd > waitUninstalledStart, 'upgrade smoke test must define Wait-Uninstalled');
-const waitUninstalledBody = upgradeSmoke.slice(waitUninstalledStart, waitUninstalledEnd);
+const waitUninstalledBody = normalizedUpgradeSmoke.slice(waitUninstalledStart, waitUninstalledEnd);
 assert.match(waitUninstalledBody, /KidOS[\\/]Guardian|KidOS\\Guardian/, 'upgrade smoke must wait for Guardian filesystem cleanup, not only service removal');
 assert.match(waitUninstalledBody, /KidOS[\\/]MediaClassifier|KidOS\\MediaClassifier/, 'upgrade smoke must wait for classifier filesystem cleanup, not only service removal');
 
