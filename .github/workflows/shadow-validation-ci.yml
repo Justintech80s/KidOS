@@ -80,28 +80,7 @@ jobs:
       - name: Capture Shadow install diagnostics
         if: always()
         shell: pwsh
-        run: |
-          $dest = "target/shadow-results/install-diagnostics"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          $programDataDiagnostics = Join-Path $env:ProgramData "KidOS\Diagnostics"
-          if (Test-Path $programDataDiagnostics) {
-            Copy-Item (Join-Path $programDataDiagnostics "*") $dest -Recurse -Force -ErrorAction SilentlyContinue
-          }
-          Get-Service KidOSGuardian,KidOSMediaClassifier -ErrorAction SilentlyContinue | Format-List * | Out-File (Join-Path $dest "services.txt")
-          Get-ScheduledTask -TaskName "KidOS Guardian Recovery" -ErrorAction SilentlyContinue | Format-List * | Out-File (Join-Path $dest "recovery-task.txt")
-          Get-WinEvent -FilterHashtable @{LogName="System"; ProviderName="Service Control Manager"; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
-            Where-Object { $_.Message -match "KidOSGuardian|KidOSMediaClassifier" } |
-            Select-Object TimeCreated,Id,LevelDisplayName,Message |
-            Format-List * |
-            Out-File (Join-Path $dest "service-control-manager-events.txt")
-          Get-WinEvent -FilterHashtable @{LogName="Application"; StartTime=(Get-Date).AddMinutes(-30)} -ErrorAction SilentlyContinue |
-            Where-Object { $_.Message -match "KidOS|media classifier|guardian" } |
-            Select-Object TimeCreated,ProviderName,Id,LevelDisplayName,Message |
-            Format-List * |
-            Out-File (Join-Path $dest "application-events.txt")
-          Get-ChildItem "$env:ProgramFiles\KidOS" -Recurse -ErrorAction SilentlyContinue |
-            Select-Object FullName,Length,LastWriteTime |
-            Out-File (Join-Path $dest "installed-files.txt")
+        run: ./scripts/windows/collect-ci-diagnostics.ps1 -ArtifactDir target/shadow-results/install-diagnostics -Stage shadow-validation -FailureClass runtime-or-install
 
       - name: Run Shadow validation
         if: steps.install.outputs.install_ok == 'true'
