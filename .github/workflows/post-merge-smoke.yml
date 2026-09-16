@@ -1,0 +1,79 @@
+name: KidOS Post-Merge Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/shell/**'
+      - 'crates/**'
+      - 'services/**'
+      - 'scripts/windows/**'
+      - 'tests/windows/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  exact-main-sha-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Run exact-SHA contract smoke
+        run: |
+          pnpm --filter @kidos/shell test --run src/features/home/system-status.test.ts
+          node tests/security/release-hardening.test.mjs
+      - name: Package classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+      - name: Build Guardian
+        run: cargo build -p kidos-guardian-host --release
+      - name: Build installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+      - name: Install KidOS
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $p = Start-Process $installer -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "KidOS installer failed with exit code $($p.ExitCode)." }
+      - name: Verify installed security state
+        shell: pwsh
+        run: ./tests/windows/security-regression.ps1 | Tee-Object -FilePath target/post-merge-security.txt
+      - name: Exercise fail-closed runtime smoke
+        shell: pwsh
+        run: ./tests/windows/fault-injection.ps1 -ArtifactDir target/post-merge/fault-injection
+      - name: Write exact-SHA post-merge evidence
+        if: success()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/post-merge | Out-Null
+          [ordered]@{
+            commit_sha = '${{ github.sha }}'
+            ref = '${{ github.ref }}'
+            post_merge_smoke = 'passed'
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json | Set-Content target/post-merge/post-merge-evidence.json -Encoding UTF8
+      - name: Capture post-merge diagnostics
+        if: always()
+        shell: pwsh
+        run: ./scripts/windows/collect-ci-diagnostics.ps1 -ArtifactDir target/post-merge/diagnostics -Stage post-merge-smoke -FailureClass runtime-or-install
+      - name: Upload post-merge evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Post-Merge-${{ github.sha }}
+          path: target/post-merge/**
+          if-no-files-found: warn
