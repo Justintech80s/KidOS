@@ -1,0 +1,69 @@
+name: KidOS Fault Injection CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/shell/**'
+      - 'crates/**'
+      - 'services/**'
+      - 'scripts/windows/**'
+      - 'tests/windows/**'
+      - 'tests/security/**'
+      - '.github/workflows/fault-injection-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/shell/**'
+      - 'crates/**'
+      - 'services/**'
+      - 'scripts/windows/**'
+      - 'tests/windows/**'
+      - 'tests/security/**'
+      - '.github/workflows/fault-injection-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  fault-injection:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Verify fail-closed shell mapping
+        run: pnpm --filter @kidos/shell test --run src/features/home/system-status.test.ts
+      - name: Package classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+      - name: Build Guardian
+        run: cargo build -p kidos-guardian-host --release
+      - name: Build installer
+        run: pnpm --filter @kidos/shell tauri build --bundles nsis
+      - name: Install KidOS
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $p = Start-Process $installer -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "KidOS installer failed with exit code $($p.ExitCode)." }
+      - name: Run controlled fault injection
+        shell: pwsh
+        run: ./tests/windows/fault-injection.ps1 -ArtifactDir target/fault-injection
+      - name: Capture diagnostics
+        if: always()
+        shell: pwsh
+        run: ./scripts/windows/collect-ci-diagnostics.ps1 -ArtifactDir target/fault-injection/diagnostics -Stage fault-injection -FailureClass safety-runtime
+      - name: Upload fault evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Fault-Injection-${{ github.sha }}
+          path: target/fault-injection/**
+          if-no-files-found: error
