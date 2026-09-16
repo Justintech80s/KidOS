@@ -191,12 +191,16 @@ Minimum fields:
 - `flake_check`
 - `post_merge_smoke` when applicable
 - `hyperv_visual_validation` with `passed`, `failed`, or `not_run`
+- `cloud_ci_ready`
 - `release_ready`
 
 Rules:
 
-- `release_ready` may be true only for the SHA represented by the manifest.
+- `cloud_ci_ready` may be true when all required cloud-runnable gates pass for the represented SHA even if Hyper-V is `not_run`.
+- `release_ready` may be true only for the represented SHA after all required release gates pass, including Hyper-V visual validation when that gate is required for the release.
 - Hyper-V visual status must be explicit; absence is not equivalent to success.
+- `hyperv_visual_validation: not_run` must never be converted to `passed` and must keep `release_ready` false for a fully validated Windows visual release.
+- The offline Hyper-V runner must not keep ordinary pull-request cloud validation permanently queued.
 - Production/release automation must never silently substitute another SHA.
 
 ## Post-Merge Smoke Validation
@@ -287,6 +291,7 @@ The upgrade is complete when all of the following are true:
 5. A post-merge `main` workflow validates and records the exact merged SHA.
 6. A release evidence manifest cannot report another SHA as validated.
 7. Hyper-V visual status is explicitly recorded as `not_run` while the runner is offline, never as passed.
-8. Existing CodeQL, dependency, installer, Shadow, hardening, Guardian, and media-safety workflows continue to run without being replaced.
-9. No new workflow requires the offline Hyper-V runner for ordinary cloud PR validation.
-10. All new tests and workflows are documented and reproducible.
+8. `cloud_ci_ready` can be true with Hyper-V `not_run`, while `release_ready` remains false until required visual release validation passes.
+9. Existing CodeQL, dependency, installer, Shadow, hardening, Guardian, and media-safety workflows continue to run without being replaced.
+10. No new workflow requires the offline Hyper-V runner for ordinary cloud PR validation.
+11. All new tests and workflows are documented and reproducible.
