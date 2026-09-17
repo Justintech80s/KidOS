@@ -1,0 +1,55 @@
+name: KidOS Exact-SHA Release Evidence
+
+on:
+  workflow_run:
+    workflows: ['KidOS Post-Merge Smoke']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Exact KidOS commit SHA to evaluate'
+        required: true
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+jobs:
+  build-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.commit_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve exact SHA
+        id: sha
+        shell: bash
+        run: echo "value=${{ github.event.workflow_run.head_sha || inputs.commit_sha }}" >> "$GITHUB_OUTPUT"
+      - name: Fetch checks for exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.value }}
+        shell: bash
+        run: |
+          mkdir -p target/release-evidence
+          gh api -H 'Accept: application/vnd.github+json' \
+            "/repos/${{ github.repository }}/commits/$SHA/check-runs?per_page=100" \
+            > target/release-evidence/check-runs.json
+      - name: Build exact-SHA evidence
+        env:
+          SHA: ${{ steps.sha.outputs.value }}
+        run: >-
+          node scripts/ci/build-release-evidence.mjs
+          --sha "$SHA"
+          --checks target/release-evidence/check-runs.json
+          --output target/release-evidence/release-evidence.json
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Release-Evidence-${{ steps.sha.outputs.value }}
+          path: target/release-evidence/**
+          if-no-files-found: error

@@ -52,3 +52,31 @@ KidOS is a child-first computing environment designed around safe browsing, pare
 - 🔐 Secure settings, logging, and recovery controls
 
 > **Development status:** The screenshots and video show the target KidOS visual experience. The repository is implementing the underlying system incrementally as development continues.
+
+## CI debugging and release evidence
+
+KidOS cloud CI produces machine-readable artifacts for Windows diagnostics, fail-closed fault injection, repeated contract checks, post-merge smoke validation, and exact-SHA release evidence.
+
+- `cloud_ci_ready: true` means the required GitHub-hosted validation for that exact commit passed.
+- `release_ready: true` additionally requires the real Hyper-V visual validation to report `passed` for that same commit.
+- An unavailable Hyper-V host is recorded as `hyperv_visual_validation: "not_run"`; it is never treated as success.
+
+Important artifacts:
+
+- `KidOS-Fault-Injection-<sha>`
+- `KidOS-Flake-Check-<sha>`
+- `KidOS-Post-Merge-<sha>`
+- `KidOS-Release-Evidence-<sha>`
+
+The self-hosted visual VM validation remains separate from ordinary PR CI so an offline physical runner cannot leave all cloud validation permanently queued.
+
+Local verification commands:
+
+```bash
+node tests/security/ci-diagnostics-contract.test.mjs
+node tests/security/fault-injection-contract.test.mjs
+node tests/security/repeat-command.test.mjs
+node tests/security/post-merge-workflow-contract.test.mjs
+node tests/security/release-evidence.test.mjs
+pnpm --filter @kidos/shell test --run src/features/home/system-status.test.ts
+```
