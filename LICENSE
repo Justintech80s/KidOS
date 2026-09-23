@@ -1,0 +1,61 @@
+KidOS Proprietary License
+
+Copyright (c) 2026 Justin Marshall. All rights reserved.
+
+1. Ownership
+
+Except for third-party software, libraries, assets, and other materials that are
+identified separately or are governed by their own licenses, the original KidOS
+source code, binaries, documentation, designs, graphics, trademarks, and other
+materials in this repository (the "KidOS Materials") are proprietary to Justin
+Marshall.
+
+2. No General Software License Granted
+
+Public availability of this repository does not grant permission to use, copy,
+modify, distribute, sublicense, sell, host, create derivative works from, or
+commercially exploit the KidOS Materials.
+
+The only rights granted are:
+(a) rights that GitHub's Terms of Service necessarily provide while the
+repository is hosted on GitHub; and
+(b) rights expressly granted in a separate written agreement signed by the
+copyright holder.
+
+Viewing or evaluating the repository does not itself create a commercial,
+distribution, modification, or sublicensing right.
+
+3. Commercial and OEM Licensing
+
+Commercial use, OEM bundling, device preinstallation, white-label use,
+co-branding, redistribution, source-code access for commercial development, and
+other commercial exploitation require a separate written license agreement.
+
+For commercial or OEM licensing discussions, contact the KidOS project owner.
+
+4. Contributions
+
+Contributions are subject to the repository's Contributor License Agreement.
+A contribution does not change the proprietary status of KidOS or grant the
+contributor ownership of the KidOS project as a whole.
+
+5. Third-Party Components
+
+Third-party dependencies and components are not relicensed by this file. They
+remain subject to their respective upstream licenses and notices. See
+THIRD_PARTY_NOTICES.md and docs/IP_COMPLIANCE.md.
+
+6. Trademarks
+
+This license does not grant permission to use the KidOS name, logos, product
+identity, or other trademarks except as expressly authorized in writing.
+
+7. Disclaimer
+
+THE KIDOS MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTIES OR CONDITIONS OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, OR NON-INFRINGEMENT,
+TO THE MAXIMUM EXTENT PERMITTED BY LAW.
+
+No commercial license is created by this file. Commercial rights must be set out
+in a separate written agreement.
