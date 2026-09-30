@@ -1,6 +1,7 @@
 mod adapter;
 mod config;
 mod service;
+mod platform_adapter;
 
 pub use adapter::{
     AssignedAccessConfig, InMemoryWindowsLockdownAdapter, LockdownAdapterError,
@@ -19,3 +20,7 @@ pub fn build_validated_assigned_access_config(
 ) -> Result<AssignedAccessConfig, LockdownConfigError> {
     build_assigned_access_config(profile).map(AssignedAccessConfig::validated)
 }
+
+pub use platform_adapter::{
+    build_windows_platform_config, ProductionWindowsPlatformAdapter, WindowsPlatformAdapter,
+};

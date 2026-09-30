@@ -1,13 +1,16 @@
 #[cfg(target_os = "windows")]
 use guardian_service::{
     GuardianActor, GuardianPolicyStore, ParentPolicyConfig,
+    platform::{
+        PlatformInspection, PlatformLockdownAdapter, PlatformLockdownService,
+    },
     privileged_ipc::{
         decode_privileged_request, IpcAccountRole, PrivilegedNonceTracker, PrivilegedRequest,
         PrivilegedResponse, GUARDIAN_PIPE_NAME, MAX_IPC_MESSAGE_BYTES,
     },
     windows_lockdown::{
-        AccountRole, ApprovedApp, LockdownInspection, LockdownProfile, WindowsAssignedAccessAdapter,
-        WindowsLockdownAdapter, WindowsLockdownService,
+        build_windows_platform_config, AccountRole, ApprovedApp, LockdownProfile,
+        ProductionWindowsPlatformAdapter,
     },
 };
 #[cfg(target_os = "windows")]
@@ -730,17 +733,17 @@ fn profile_from_ipc(profile: guardian_service::privileged_ipc::IpcLockdownProfil
 
 #[cfg(target_os = "windows")]
 fn current_platform_state() -> (String, Option<String>) {
-    let adapter = WindowsAssignedAccessAdapter::default();
+    let adapter = ProductionWindowsPlatformAdapter::default();
     match adapter.inspect() {
-        Ok(LockdownInspection::Configured) => ("locked".into(), None),
-        Ok(LockdownInspection::NotConfigured) => ("unmanaged".into(), None),
-        Ok(LockdownInspection::Unsupported) => (
+        Ok(PlatformInspection::Configured) => ("locked".into(), None),
+        Ok(PlatformInspection::NotConfigured) => ("unmanaged".into(), None),
+        Ok(PlatformInspection::Unsupported) => (
             "restricted_safe_mode".into(),
             Some("Windows Assigned Access provider is unsupported.".into()),
         ),
         Err(error) => (
             "restricted_safe_mode".into(),
-            Some(format!("Guardian could not inspect Assigned Access: {error:?}")),
+            Some(format!("Guardian could not inspect the platform lockdown adapter: {error:?}")),
         ),
     }
 }
@@ -749,7 +752,7 @@ fn current_platform_state() -> (String, Option<String>) {
 fn handle_request(
     bytes: &[u8],
     nonce_tracker: &mut PrivilegedNonceTracker,
-    lockdown_service: &mut WindowsLockdownService<WindowsAssignedAccessAdapter>,
+    lockdown_service: &mut PlatformLockdownService<ProductionWindowsPlatformAdapter>,
     parent_authorization: &mut ParentAuthorization<WindowsSecretStore>,
     parent_policy: &mut GuardianPolicyStore,
 ) -> PrivilegedResponse {
@@ -1051,7 +1054,18 @@ fn handle_request(
                 Err(error) => return error_response("invalid_profile", error),
             };
 
-            match lockdown_service.prepare_and_apply(&profile) {
+            let config = match build_windows_platform_config(&profile) {
+                Ok(config) => config,
+                Err(error) => {
+                    mark_recovery_required("assigned-access-config-invalid");
+                    return error_response(
+                        "invalid_platform_config",
+                        format!("Guardian could not build the Windows platform lockdown configuration: {error:?}"),
+                    );
+                }
+            };
+
+            match lockdown_service.prepare_and_apply(&config) {
                 Ok(()) => {
                     clear_recovery_marker();
                     PrivilegedResponse::Status { state: "locked".into(), reason: None }
@@ -1061,7 +1075,7 @@ fn handle_request(
                     let _ = lockdown_service.remove_lockdown(true);
                     error_response(
                         "apply_failed_recovered",
-                        format!("Guardian could not apply Windows Assigned Access and removed the partial lockdown: {error:?}"),
+                        format!("Guardian could not apply the Windows platform adapter and removed the partial lockdown: {error:?}"),
                     )
                 },
             }
@@ -1143,7 +1157,7 @@ unsafe fn create_pipe() -> Result<HANDLE, String> {
 pub fn run_pipe_server() {
     let mut nonce_tracker = PrivilegedNonceTracker::default();
     let mut lockdown_service =
-        WindowsLockdownService::new(WindowsAssignedAccessAdapter::default());
+        PlatformLockdownService::new(ProductionWindowsPlatformAdapter::default());
     let mut parent_authorization =
         ParentAuthorization::new(WindowsSecretStore::new("KidOSGuardian"), PARENT_PIN_KEY);
     let mut parent_policy = GuardianPolicyStore::default();

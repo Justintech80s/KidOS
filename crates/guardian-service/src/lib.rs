@@ -1,5 +1,6 @@
 mod ipc;
 mod parent_policy;
+pub mod platform;
 mod policy_store;
 pub mod privileged_ipc;
 mod safety_events;
@@ -20,6 +21,12 @@ pub use os_foundation::{
 };
 pub use parent_policy::{
     GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
+};
+pub use platform::{
+    InMemoryPlatformAdapter, PlatformAdapterError, PlatformInspection, PlatformKind,
+    PlatformLockdownAdapter, PlatformLockdownConfig, PlatformLockdownService,
+    PlatformLockdownServiceError, PlatformLockdownState, PlatformLockdownStatus,
+    PlatformUnlockGrant,
 };
 pub use policy_store::PolicySnapshot;
 pub use safety_events::{SafetyEvent, SafetyEventError, SafetyEventStore, SafetyEventSummary};
