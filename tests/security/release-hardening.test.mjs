@@ -14,6 +14,7 @@ const browserHost = read('apps/shell/src-tauri/src/lib.rs');
 const lockdownConfig = read('crates/guardian-service/src/windows_lockdown/config.rs');
 const guardianIpc = read('crates/guardian-host/src/ipc_server.rs');
 const updater = read('crates/guardian-host/src/updater.rs');
+const linuxPlatform = read('crates/guardian-host/src/linux_platform.rs');
 const recovery = read('scripts/windows/kidos-recovery.ps1');
 const provision = read('scripts/windows/provision-guardian-credentials.ps1');
 const restoreWindows = read('scripts/windows/restore-windows-account.ps1');
@@ -96,6 +97,46 @@ const signatureVerifier = updater.match(/fn verify_authenticode[\s\S]*?\n}\r?\n/
 assert.match(signatureVerifier, /Get-AuthenticodeSignature/, 'The updater signature-verification function must use Windows Authenticode.');
 assert.match(signatureVerifier, /Command::new\("powershell\.exe"\)/, 'The only PowerShell updater command must be inside Authenticode verification.');
 assert.match(updater, /verify_staged_installer\(&manifest, &installer\)\?[\s\S]*Command::new\(&installer\)[\s\S]*\.arg\("\/S"\)/, 'Installer execution must occur only after staged-file revalidation and only in silent install mode.');
+
+
+const linuxCommands = [...linuxPlatform.matchAll(/Command::new\(([^\n]+?)\)/g)].map((match) => match[1].trim());
+assert.deepEqual(
+  linuxCommands,
+  ['"systemctl"'],
+  'The privileged Linux Guardian backend may invoke only systemctl.',
+);
+assert.match(
+  linuxPlatform,
+  /Command::new\("systemctl"\)[\s\S]*\.args\(Self::systemd_args\(action\)\)/,
+  'Linux systemctl execution must receive arguments only from the closed SystemdAction mapping.',
+);
+assert.doesNotMatch(
+  linuxPlatform,
+  /\.args\(args\)|sh\s+-c|bash\s+-c/,
+  'The Linux Guardian backend must not pass arbitrary command arrays or shell command strings.',
+);
+for (const requiredMapping of [
+  /SystemdAction::DaemonReload\s*=>\s*&\["daemon-reload"\]/,
+  /SystemdAction::EnableChildService\s*=>\s*&\["enable", KIDOS_CHILD_SERVICE\]/,
+  /SystemdAction::EnableChildTarget\s*=>\s*&\["enable", KIDOS_CHILD_TARGET\]/,
+  /SystemdAction::StartChildTarget\s*=>\s*&\["start", KIDOS_CHILD_TARGET\]/,
+  /SystemdAction::StopChildTarget\s*=>\s*&\["stop", KIDOS_CHILD_TARGET\]/,
+  /SystemdAction::DisableChildService\s*=>\s*&\["disable", KIDOS_CHILD_SERVICE\]/,
+  /SystemdAction::DisableChildTarget\s*=>\s*&\["disable", KIDOS_CHILD_TARGET\]/,
+  /SystemdAction::IsChildServiceEnabled\s*=>[\s\S]*?\["is-enabled", "--quiet", KIDOS_CHILD_SERVICE\]/,
+  /SystemdAction::IsChildTargetActive\s*=>[\s\S]*?\["is-active", "--quiet", KIDOS_CHILD_TARGET\]/,
+]) {
+  assert.match(
+    linuxPlatform,
+    requiredMapping,
+    'Linux Guardian systemctl arguments must remain on the reviewed allowlist.',
+  );
+}
+assert.match(
+  linuxPlatform,
+  /KIDOS_LINUX_CONFIG_PATH[\s\S]*0o600/,
+  'The Linux Guardian policy/config file must be owner-readable only.',
+);
 
 assert.match(recovery, /Start-Service \$guardian/, 'Recovery must attempt to restore Guardian after service failure.');
 assert.match(recovery, /classifier-service-failed/, 'Classifier failure must be tracked without silently weakening media safety.');
