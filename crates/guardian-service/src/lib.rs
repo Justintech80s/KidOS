@@ -4,6 +4,7 @@ mod policy_store;
 pub mod privileged_ipc;
 mod safety_events;
 mod service_state;
+mod system_guard;
 pub mod windows_lockdown;
 
 use std::{error::Error, fmt};
@@ -23,6 +24,7 @@ pub use parent_policy::{
 pub use policy_store::PolicySnapshot;
 pub use safety_events::{SafetyEvent, SafetyEventError, SafetyEventStore, SafetyEventSummary};
 pub use service_state::{load_service_state, GuardianMode, GuardianState};
+pub use system_guard::guardian_mode_from_core_health;
 pub use windows_lockdown::{
     AccountRole, ApprovedApp, InMemoryWindowsLockdownAdapter, LockdownAdapterError,
     LockdownProfile, LockdownServiceError, LockdownState, LockdownStatus, ParentUnlockGrant,
