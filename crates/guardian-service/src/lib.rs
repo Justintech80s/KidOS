@@ -12,6 +12,11 @@ pub use ipc::{
     decode_request, evaluate_guardian_request, validate_request_for_actor, GuardianActor,
     GuardianRequest, NonceTracker, RequestEnvelope, GUARDIAN_PROTOCOL_VERSION,
 };
+pub use os_foundation::{
+    AppIdentity, BootError, BootPhase, BootSequence, Capability, CapabilitySet, CoreHealth,
+    MissingCapability, ProcessRole, RecoveryEvent, RecoveryMachine, RecoveryState, SandboxProfile,
+    ServiceRoute, SessionTopology, SystemMode, TopologyError,
+};
 pub use parent_policy::{
     GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
 };
