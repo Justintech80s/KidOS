@@ -167,6 +167,7 @@ pub trait LinuxPlatformBackend {
     fn remove_if_exists(&mut self, path: &str) -> Result<(), PlatformAdapterError>;
     fn file_exists(&self, path: &str) -> Result<bool, PlatformAdapterError>;
     fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError>;
+    fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError>;
 }
 
 #[derive(Debug, Default)]
@@ -243,6 +244,10 @@ impl LinuxPlatformBackend for SystemLinuxBackend {
     }
 
     fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
+        self.systemctl_readonly(args)
+    }
+
+    fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
         let status = std::process::Command::new("systemctl")
             .args(args)
             .status()
@@ -270,6 +275,10 @@ impl LinuxPlatformBackend for SystemLinuxBackend {
     }
 
     fn systemctl(&mut self, _args: &[&str]) -> Result<bool, PlatformAdapterError> {
+        Err(PlatformAdapterError::UnsupportedPlatform)
+    }
+
+    fn systemctl_readonly(&self, _args: &[&str]) -> Result<bool, PlatformAdapterError> {
         Err(PlatformAdapterError::UnsupportedPlatform)
     }
 }
@@ -332,9 +341,12 @@ impl<B: LinuxPlatformBackend> PlatformLockdownAdapter for LinuxPlatformAdapter<B
             return Ok(PlatformInspection::NotConfigured);
         }
 
-        let mut probe = LinuxInspectionProbe::new(&self.backend);
-        let enabled = probe.systemctl(&["is-enabled", "--quiet", KIDOS_CHILD_SERVICE])?;
-        let active = probe.systemctl(&["is-active", "--quiet", KIDOS_CHILD_TARGET])?;
+        let enabled = self
+            .backend
+            .systemctl_readonly(&["is-enabled", "--quiet", KIDOS_CHILD_SERVICE])?;
+        let active = self
+            .backend
+            .systemctl_readonly(&["is-active", "--quiet", KIDOS_CHILD_TARGET])?;
 
         Ok(if enabled && active {
             PlatformInspection::Configured
@@ -379,36 +391,6 @@ impl<B: LinuxPlatformBackend> PlatformLockdownAdapter for LinuxPlatformAdapter<B
         self.backend.remove_if_exists(KIDOS_CHILD_TARGET_PATH)?;
         self.backend.remove_if_exists(KIDOS_LINUX_CONFIG_PATH)?;
         self.require_systemctl(&["daemon-reload"])
-    }
-}
-
-// inspect() only has &self because the generic platform trait intentionally treats
-// inspection as read-only. This small wrapper permits an immutable backend to expose
-// a read-only systemctl probe without giving inspection write access to files.
-struct LinuxInspectionProbe<'a, B: LinuxPlatformBackend> {
-    backend: &'a B,
-}
-
-impl<'a, B: LinuxPlatformBackend> LinuxInspectionProbe<'a, B> {
-    fn new(backend: &'a B) -> Self {
-        Self { backend }
-    }
-
-    fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
-        #[cfg(target_os = "linux")]
-        {
-            if std::any::type_name::<B>() == std::any::type_name::<SystemLinuxBackend>() {
-                let status = std::process::Command::new("systemctl")
-                    .args(args)
-                    .status()
-                    .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-                return Ok(status.success());
-            }
-        }
-
-        Err(PlatformAdapterError::PlatformFailure(
-            "Linux inspection backend does not support immutable systemctl probing".into(),
-        ))
     }
 }
 
@@ -483,6 +465,14 @@ mod tests {
                     self.active.remove(*unit);
                     Ok(true)
                 }
+                ["is-enabled", "--quiet", unit] => Ok(self.enabled.contains(*unit)),
+                ["is-active", "--quiet", unit] => Ok(self.active.contains(*unit)),
+                _ => Ok(false),
+            }
+        }
+
+        fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
+            match args {
                 ["is-enabled", "--quiet", unit] => Ok(self.enabled.contains(*unit)),
                 ["is-active", "--quiet", unit] => Ok(self.active.contains(*unit)),
                 _ => Ok(false),
