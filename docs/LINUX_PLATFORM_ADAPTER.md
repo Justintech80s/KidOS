@@ -1,6 +1,6 @@
 # KidOS Linux Platform Adapter
 
-This adapter is the first production-targeted Linux implementation of the shared KidOS platform lockdown contract.
+This adapter is the first production-targeted Linux implementation of the shared KidOS platform lockdown contract. Policy and state transitions stay in `guardian-service`; privileged file writes and systemd execution live in the Guardian host.
 
 ## What it does
 
@@ -17,6 +17,8 @@ When given a validated `LinuxLockdownProfile`, the adapter:
 
 The child session unit launches only the configured KidOS shell under the dedicated child account. It also enables several systemd hardening controls including `NoNewPrivileges`, kernel/control-group protection, an empty capability bounding set, and a restrictive umask.
 
+The privileged host does not accept arbitrary systemctl argument arrays. `guardian-service` emits a closed `SystemdAction` enum and `crates/guardian-host/src/linux_platform.rs` maps that enum to a reviewed allowlist of exact systemctl arguments.
+
 ## Fail closed
 
 A partial apply is rolled back. If systemd cannot start the protected child target, the adapter removes the partial KidOS unit/config files and disables the target/service. The generic `PlatformLockdownService` then moves KidOS into Restricted Safe Mode.
@@ -29,7 +31,7 @@ This is a real Linux enforcement adapter, but it is not yet a complete bootable 
 
 The next Linux milestones are:
 
-- run the KidOS Guardian host natively as a Linux systemd service;
+- run the KidOS Guardian host natively as a long-lived Linux systemd service;
 - provide Linux IPC between the shell and Guardian;
 - add the graphical session/compositor startup path;
 - package the shell, Guardian, classifier, policy files, and systemd units into a reproducible image;
