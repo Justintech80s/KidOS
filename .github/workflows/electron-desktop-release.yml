@@ -1,0 +1,52 @@
+name: KidOS Desktop Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "apps/shell/**"
+      - ".github/workflows/electron-desktop-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-electron-desktop:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test Electron security boundary
+        run: pnpm --filter @kidos/desktop test
+      - name: Build Electron Windows installer
+        run: pnpm --filter @kidos/desktop build
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "apps/desktop/dist-installer/*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "KidOS Desktop installer was not produced." }
+          Copy-Item $installer.FullName "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe"
+          $hash = (Get-FileHash "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" | Set-Content "KidOS-Desktop-SHA256SUMS.txt"
+      - name: Publish Desktop Preview release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view desktop-latest --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload desktop-latest "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" "KidOS-Desktop-SHA256SUMS.txt" --clobber --repo "${{ github.repository }}"
+            gh release edit desktop-latest --title "KidOS Desktop Electron Preview" --prerelease --notes "KidOS Desktop is the fast-install Electron edition for Windows 10/11 x64. It packages the KidOS interface as a conventional desktop application. This preview does NOT activate the Guardian Windows service, Assigned Access, Restricted Safe Mode, or child-account lockdown. Use the separate protected Tauri + Rust Guardian edition when testing those security controls. This Electron installer is currently unsigned and intended for preview/testing."
+          } else {
+            gh release create desktop-latest "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" "KidOS-Desktop-SHA256SUMS.txt" --title "KidOS Desktop Electron Preview" --prerelease --notes "KidOS Desktop is the fast-install Electron edition for Windows 10/11 x64. It packages the KidOS interface as a conventional desktop application. This preview does NOT activate the Guardian Windows service, Assigned Access, Restricted Safe Mode, or child-account lockdown. Use the separate protected Tauri + Rust Guardian edition when testing those security controls. This Electron installer is currently unsigned and intended for preview/testing." --repo "${{ github.repository }}"
