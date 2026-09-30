@@ -161,126 +161,39 @@ AllowIsolate=yes
     )
 }
 
+/// Closed set of privileged systemd operations that the Guardian host may perform.
+///
+/// The policy/service crate never executes operating-system commands. A privileged
+/// host backend must map these variants to its audited platform mechanism.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemdAction {
+    DaemonReload,
+    EnableChildService,
+    EnableChildTarget,
+    StartChildTarget,
+    StopChildTarget,
+    DisableChildService,
+    DisableChildTarget,
+    IsChildServiceEnabled,
+    IsChildTargetActive,
+}
+
+impl SystemdAction {
+    pub const fn is_read_only(self) -> bool {
+        matches!(
+            self,
+            Self::IsChildServiceEnabled | Self::IsChildTargetActive
+        )
+    }
+}
+
 pub trait LinuxPlatformBackend {
     fn ensure_privileged(&self) -> Result<(), PlatformAdapterError>;
     fn write_atomic(&mut self, path: &str, content: &str) -> Result<(), PlatformAdapterError>;
     fn remove_if_exists(&mut self, path: &str) -> Result<(), PlatformAdapterError>;
     fn file_exists(&self, path: &str) -> Result<bool, PlatformAdapterError>;
-    fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError>;
-    fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError>;
-}
-
-#[derive(Debug, Default)]
-pub struct SystemLinuxBackend;
-
-#[cfg(target_os = "linux")]
-impl LinuxPlatformBackend for SystemLinuxBackend {
-    fn ensure_privileged(&self) -> Result<(), PlatformAdapterError> {
-        let status = std::fs::read_to_string("/proc/self/status")
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        let effective_uid = status
-            .lines()
-            .find(|line| line.starts_with("Uid:"))
-            .and_then(|line| line.split_whitespace().nth(2))
-            .and_then(|value| value.parse::<u32>().ok())
-            .ok_or_else(|| {
-                PlatformAdapterError::PlatformFailure(
-                    "KidOS could not determine the effective Linux user id".into(),
-                )
-            })?;
-
-        if effective_uid == 0 {
-            Ok(())
-        } else {
-            Err(PlatformAdapterError::AccessDenied)
-        }
-    }
-
-    fn write_atomic(&mut self, path: &str, content: &str) -> Result<(), PlatformAdapterError> {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-
-        let destination = std::path::Path::new(path);
-        let parent = destination.parent().ok_or_else(|| {
-            PlatformAdapterError::InvalidConfiguration("Linux destination has no parent".into())
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-
-        let temporary = parent.join(format!(
-            ".kidos-{}.tmp",
-            std::process::id()
-        ));
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&temporary)
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        file.write_all(content.as_bytes())
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        file.sync_all()
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o644))
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        std::fs::rename(&temporary, destination)
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))
-    }
-
-    fn remove_if_exists(&mut self, path: &str) -> Result<(), PlatformAdapterError> {
-        match std::fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(PlatformAdapterError::PlatformFailure(error.to_string())),
-        }
-    }
-
-    fn file_exists(&self, path: &str) -> Result<bool, PlatformAdapterError> {
-        match std::fs::metadata(path) {
-            Ok(metadata) => Ok(metadata.is_file()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(PlatformAdapterError::PlatformFailure(error.to_string())),
-        }
-    }
-
-    fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
-        self.systemctl_readonly(args)
-    }
-
-    fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
-        let status = std::process::Command::new("systemctl")
-            .args(args)
-            .status()
-            .map_err(|error| PlatformAdapterError::PlatformFailure(error.to_string()))?;
-        Ok(status.success())
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-impl LinuxPlatformBackend for SystemLinuxBackend {
-    fn ensure_privileged(&self) -> Result<(), PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
-
-    fn write_atomic(&mut self, _path: &str, _content: &str) -> Result<(), PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
-
-    fn remove_if_exists(&mut self, _path: &str) -> Result<(), PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
-
-    fn file_exists(&self, _path: &str) -> Result<bool, PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
-
-    fn systemctl(&mut self, _args: &[&str]) -> Result<bool, PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
-
-    fn systemctl_readonly(&self, _args: &[&str]) -> Result<bool, PlatformAdapterError> {
-        Err(PlatformAdapterError::UnsupportedPlatform)
-    }
+    fn systemd(&mut self, action: SystemdAction) -> Result<bool, PlatformAdapterError>;
+    fn systemd_readonly(&self, action: SystemdAction) -> Result<bool, PlatformAdapterError>;
 }
 
 #[derive(Debug)]
@@ -298,33 +211,29 @@ impl<B: LinuxPlatformBackend> LinuxPlatformAdapter<B> {
     }
 
     fn rollback_partial_apply(&mut self) {
-        let _ = self.backend.systemctl(&["stop", KIDOS_CHILD_TARGET]);
-        let _ = self.backend.systemctl(&["disable", KIDOS_CHILD_SERVICE]);
-        let _ = self.backend.systemctl(&["disable", KIDOS_CHILD_TARGET]);
+        let _ = self.backend.systemd(SystemdAction::StopChildTarget);
+        let _ = self.backend.systemd(SystemdAction::DisableChildService);
+        let _ = self.backend.systemd(SystemdAction::DisableChildTarget);
         let _ = self.backend.remove_if_exists(KIDOS_CHILD_SERVICE_PATH);
         let _ = self.backend.remove_if_exists(KIDOS_CHILD_TARGET_PATH);
         let _ = self.backend.remove_if_exists(KIDOS_LINUX_CONFIG_PATH);
-        let _ = self.backend.systemctl(&["daemon-reload"]);
+        let _ = self.backend.systemd(SystemdAction::DaemonReload);
     }
 
-    fn require_systemctl(&mut self, args: &[&str]) -> Result<(), PlatformAdapterError> {
-        if self.backend.systemctl(args)? {
+    fn require_systemd(&mut self, action: SystemdAction) -> Result<(), PlatformAdapterError> {
+        if action.is_read_only() {
+            return Err(PlatformAdapterError::InvalidConfiguration(
+                "read-only systemd action cannot be used as a mutating operation".into(),
+            ));
+        }
+
+        if self.backend.systemd(action)? {
             Ok(())
         } else {
             Err(PlatformAdapterError::PlatformFailure(format!(
-                "systemctl {:?} failed",
-                args
+                "systemd action {action:?} failed"
             )))
         }
-    }
-}
-
-impl<B> Default for LinuxPlatformAdapter<B>
-where
-    B: LinuxPlatformBackend + Default,
-{
-    fn default() -> Self {
-        Self::new(B::default())
     }
 }
 
@@ -343,10 +252,10 @@ impl<B: LinuxPlatformBackend> PlatformLockdownAdapter for LinuxPlatformAdapter<B
 
         let enabled = self
             .backend
-            .systemctl_readonly(&["is-enabled", "--quiet", KIDOS_CHILD_SERVICE])?;
+            .systemd_readonly(SystemdAction::IsChildServiceEnabled)?;
         let active = self
             .backend
-            .systemctl_readonly(&["is-active", "--quiet", KIDOS_CHILD_TARGET])?;
+            .systemd_readonly(SystemdAction::IsChildTargetActive)?;
 
         Ok(if enabled && active {
             PlatformInspection::Configured
@@ -367,10 +276,10 @@ impl<B: LinuxPlatformBackend> PlatformLockdownAdapter for LinuxPlatformAdapter<B
             self.backend
                 .write_atomic(KIDOS_CHILD_TARGET_PATH, &child_target_unit(&profile))?;
 
-            self.require_systemctl(&["daemon-reload"])?;
-            self.require_systemctl(&["enable", KIDOS_CHILD_SERVICE])?;
-            self.require_systemctl(&["enable", KIDOS_CHILD_TARGET])?;
-            self.require_systemctl(&["start", KIDOS_CHILD_TARGET])?;
+            self.require_systemd(SystemdAction::DaemonReload)?;
+            self.require_systemd(SystemdAction::EnableChildService)?;
+            self.require_systemd(SystemdAction::EnableChildTarget)?;
+            self.require_systemd(SystemdAction::StartChildTarget)?;
             Ok(())
         })();
 
@@ -383,18 +292,16 @@ impl<B: LinuxPlatformBackend> PlatformLockdownAdapter for LinuxPlatformAdapter<B
     fn remove(&mut self) -> Result<(), PlatformAdapterError> {
         self.backend.ensure_privileged()?;
 
-        let _ = self.backend.systemctl(&["stop", KIDOS_CHILD_TARGET]);
-        let _ = self.backend.systemctl(&["disable", KIDOS_CHILD_SERVICE]);
-        let _ = self.backend.systemctl(&["disable", KIDOS_CHILD_TARGET]);
+        let _ = self.backend.systemd(SystemdAction::StopChildTarget);
+        let _ = self.backend.systemd(SystemdAction::DisableChildService);
+        let _ = self.backend.systemd(SystemdAction::DisableChildTarget);
 
         self.backend.remove_if_exists(KIDOS_CHILD_SERVICE_PATH)?;
         self.backend.remove_if_exists(KIDOS_CHILD_TARGET_PATH)?;
         self.backend.remove_if_exists(KIDOS_LINUX_CONFIG_PATH)?;
-        self.require_systemctl(&["daemon-reload"])
+        self.require_systemd(SystemdAction::DaemonReload)
     }
 }
-
-pub type ProductionLinuxPlatformAdapter = LinuxPlatformAdapter<SystemLinuxBackend>;
 
 #[cfg(test)]
 mod tests {
@@ -415,6 +322,58 @@ mod tests {
             Self {
                 privileged: true,
                 ..Self::default()
+            }
+        }
+
+        fn execute(&mut self, action: SystemdAction) -> bool {
+            match action {
+                SystemdAction::DaemonReload => true,
+                SystemdAction::EnableChildService => {
+                    self.enabled.insert(KIDOS_CHILD_SERVICE.into());
+                    true
+                }
+                SystemdAction::EnableChildTarget => {
+                    self.enabled.insert(KIDOS_CHILD_TARGET.into());
+                    true
+                }
+                SystemdAction::StartChildTarget => {
+                    if self.fail_start {
+                        false
+                    } else {
+                        self.active.insert(KIDOS_CHILD_TARGET.into());
+                        true
+                    }
+                }
+                SystemdAction::StopChildTarget => {
+                    self.active.remove(KIDOS_CHILD_TARGET);
+                    true
+                }
+                SystemdAction::DisableChildService => {
+                    self.enabled.remove(KIDOS_CHILD_SERVICE);
+                    true
+                }
+                SystemdAction::DisableChildTarget => {
+                    self.enabled.remove(KIDOS_CHILD_TARGET);
+                    true
+                }
+                SystemdAction::IsChildServiceEnabled => {
+                    self.enabled.contains(KIDOS_CHILD_SERVICE)
+                }
+                SystemdAction::IsChildTargetActive => {
+                    self.active.contains(KIDOS_CHILD_TARGET)
+                }
+            }
+        }
+
+        fn inspect(&self, action: SystemdAction) -> bool {
+            match action {
+                SystemdAction::IsChildServiceEnabled => {
+                    self.enabled.contains(KIDOS_CHILD_SERVICE)
+                }
+                SystemdAction::IsChildTargetActive => {
+                    self.active.contains(KIDOS_CHILD_TARGET)
+                }
+                _ => false,
             }
         }
     }
@@ -442,41 +401,22 @@ mod tests {
             Ok(self.files.contains_key(path))
         }
 
-        fn systemctl(&mut self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
-            match args {
-                ["daemon-reload"] => Ok(true),
-                ["enable", unit] => {
-                    self.enabled.insert((*unit).into());
-                    Ok(true)
-                }
-                ["disable", unit] => {
-                    self.enabled.remove(*unit);
-                    Ok(true)
-                }
-                ["start", unit] if *unit == KIDOS_CHILD_TARGET => {
-                    if self.fail_start {
-                        Ok(false)
-                    } else {
-                        self.active.insert((*unit).into());
-                        Ok(true)
-                    }
-                }
-                ["stop", unit] => {
-                    self.active.remove(*unit);
-                    Ok(true)
-                }
-                ["is-enabled", "--quiet", unit] => Ok(self.enabled.contains(*unit)),
-                ["is-active", "--quiet", unit] => Ok(self.active.contains(*unit)),
-                _ => Ok(false),
+        fn systemd(&mut self, action: SystemdAction) -> Result<bool, PlatformAdapterError> {
+            if action.is_read_only() {
+                return Err(PlatformAdapterError::InvalidConfiguration(
+                    "read-only action used through mutable backend method".into(),
+                ));
             }
+            Ok(self.execute(action))
         }
 
-        fn systemctl_readonly(&self, args: &[&str]) -> Result<bool, PlatformAdapterError> {
-            match args {
-                ["is-enabled", "--quiet", unit] => Ok(self.enabled.contains(*unit)),
-                ["is-active", "--quiet", unit] => Ok(self.active.contains(*unit)),
-                _ => Ok(false),
+        fn systemd_readonly(&self, action: SystemdAction) -> Result<bool, PlatformAdapterError> {
+            if !action.is_read_only() {
+                return Err(PlatformAdapterError::InvalidConfiguration(
+                    "mutating action used through read-only backend method".into(),
+                ));
             }
+            Ok(self.inspect(action))
         }
     }
 
@@ -552,6 +492,7 @@ mod tests {
         assert!(!adapter.backend.files.contains_key(KIDOS_CHILD_SERVICE_PATH));
         assert!(!adapter.backend.files.contains_key(KIDOS_CHILD_TARGET_PATH));
         assert!(!adapter.backend.enabled.contains(KIDOS_CHILD_SERVICE));
+        assert!(!adapter.backend.enabled.contains(KIDOS_CHILD_TARGET));
     }
 
     #[test]
@@ -561,5 +502,13 @@ mod tests {
         let config = build_linux_platform_config(&profile()).unwrap();
 
         assert_eq!(adapter.apply(&config), Err(PlatformAdapterError::AccessDenied));
+    }
+
+    #[test]
+    fn read_only_systemd_actions_are_separated_from_mutations() {
+        assert!(SystemdAction::IsChildServiceEnabled.is_read_only());
+        assert!(SystemdAction::IsChildTargetActive.is_read_only());
+        assert!(!SystemdAction::StartChildTarget.is_read_only());
+        assert!(!SystemdAction::DaemonReload.is_read_only());
     }
 }
