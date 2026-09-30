@@ -1,0 +1,56 @@
+name: KidOS Desktop Electron CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/shell/**'
+      - 'packages/**'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/electron-desktop-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/shell/**'
+      - 'packages/**'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/electron-desktop-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-electron-installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test Electron security boundary
+        run: pnpm --filter @kidos/desktop test
+      - name: Build KidOS Desktop installer
+        run: pnpm --filter @kidos/desktop build
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/dist-installer/KidOS-Desktop-Windows-x64-*-Setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "KidOS Desktop installer was not generated." }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content apps/desktop/dist-installer/KidOS-Desktop-SHA256SUMS.txt -Encoding ascii
+          Write-Host "Built $($installer.Name)"
+      - name: Upload downloadable KidOS Desktop
+        uses: actions/upload-artifact@v4
+        with:
+          name: KidOS-Desktop-Windows-x64
+          path: |
+            apps/desktop/dist-installer/KidOS-Desktop-Windows-x64-*-Setup.exe
+            apps/desktop/dist-installer/KidOS-Desktop-SHA256SUMS.txt
+          if-no-files-found: error

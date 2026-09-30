@@ -103,12 +103,14 @@ jobs:
       - name: Reject generic OS command execution bridge
         shell: bash
         run: |
-          # The privileged Guardian updater is the only approved process launcher:
-          # it executes a pinned PowerShell Authenticode check and a hash/signature-
-          # verified installer from KidOS protected staging. Browser/shell code and
-          # all other crates remain prohibited from exposing generic OS execution.
-          if git grep -n -E 'std::process::Command|Command::new\(' -- apps packages crates ':(exclude)crates/guardian-host/src/updater.rs'; then
-            echo 'Generic operating-system command execution is not allowed outside the hardened Guardian updater.'
+          # Privileged process execution is restricted to audited Guardian boundaries:
+          # - updater.rs: pinned PowerShell Authenticode verification and verified installer launch
+          # - linux_platform.rs: closed SystemdAction -> fixed systemctl argument mapping
+          # Browser/shell code, guardian-service, and all other crates remain prohibited.
+          if git grep -n -E 'std::process::Command|Command::new\(' -- apps packages crates \
+            ':(exclude)crates/guardian-host/src/updater.rs' \
+            ':(exclude)crates/guardian-host/src/linux_platform.rs'; then
+            echo 'Generic operating-system command execution is not allowed outside audited Guardian execution boundaries.'
             exit 1
           fi
 
