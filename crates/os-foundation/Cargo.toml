@@ -1,0 +1,8 @@
+[package]
+name = "os-foundation"
+version = "0.1.0"
+edition = "2021"
+description = "Platform-neutral OS security and lifecycle primitives for KidOS"
+publish = false
+
+[dependencies]
