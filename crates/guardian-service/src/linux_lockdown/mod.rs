@@ -527,6 +527,20 @@ mod tests {
     }
 
     #[test]
+    fn generic_platform_service_can_drive_linux_adapter() {
+        let backend = FakeLinuxBackend::privileged();
+        let adapter = LinuxPlatformAdapter::new(backend);
+        let mut service = crate::platform::PlatformLockdownService::new(adapter);
+        let config = build_linux_platform_config(&profile()).unwrap();
+
+        service.prepare_and_apply(&config).unwrap();
+        assert_eq!(
+            service.status(0).state,
+            crate::platform::PlatformLockdownState::Locked
+        );
+    }
+
+    #[test]
     fn failed_start_rolls_back_partial_linux_configuration() {
         let mut backend = FakeLinuxBackend::privileged();
         backend.fail_start = true;
