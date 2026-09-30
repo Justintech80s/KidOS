@@ -1,4 +1,5 @@
 mod ipc;
+pub mod linux_lockdown;
 mod parent_policy;
 pub mod platform;
 mod policy_store;
@@ -18,6 +19,12 @@ pub use os_foundation::{
     AppIdentity, BootError, BootPhase, BootSequence, Capability, CapabilitySet, CoreHealth,
     MissingCapability, ProcessRole, RecoveryEvent, RecoveryMachine, RecoveryState, SandboxProfile,
     ServiceRoute, SessionTopology, SystemMode, TopologyError,
+};
+pub use linux_lockdown::{
+    build_linux_platform_config, LinuxLockdownConfigError, LinuxLockdownProfile,
+    LinuxPlatformAdapter, LinuxPlatformBackend, ProductionLinuxPlatformAdapter,
+    SystemLinuxBackend, KIDOS_CHILD_SERVICE, KIDOS_CHILD_SERVICE_PATH, KIDOS_CHILD_TARGET,
+    KIDOS_CHILD_TARGET_PATH, KIDOS_LINUX_CONFIG_PATH,
 };
 pub use parent_policy::{
     GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
