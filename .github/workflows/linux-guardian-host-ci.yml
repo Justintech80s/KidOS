@@ -1,0 +1,32 @@
+name: KidOS Linux Guardian Host CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify-linux-guardian-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test Guardian service and Linux host boundary
+        run: |
+          cargo test -p guardian-service
+          cargo test -p kidos-guardian-host
+      - name: Verify Guardian service contains no operating-system command execution
+        shell: bash
+        run: |
+          if git grep -n -E 'std::process::Command|Command::new\(' -- crates/guardian-service; then
+            echo 'Guardian service must remain platform-policy code and may not execute OS commands.'
+            exit 1
+          fi
+          command_matches="$(git grep -n -E 'std::process::Command|Command::new\(' -- crates/guardian-host/src/linux_platform.rs || true)"
+          command_violations="$(printf '%s\n' "$command_matches" | grep -v 'Command::new("systemctl")' || true)"
+          if [ -n "$command_violations" ]; then
+            printf '%s\n' "$command_violations"
+            echo 'Linux Guardian host may invoke only the audited systemctl entry point.'
+            exit 1
+          fi
