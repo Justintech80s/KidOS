@@ -35,7 +35,9 @@ The Windows adapter is active now.
 
 ### Linux
 
-The generic contract already includes `PlatformKind::Linux`, but there is intentionally no production Linux enforcer in this change. The next implementation should map the adapter contract to a dedicated child session, system service supervision, application sandboxing, and network controls on the chosen Linux base.
+The Linux adapter is now implemented as a production-targeted systemd adapter. It validates a dedicated child account and KidOS shell path, writes the protected child-session service and target, enables/starts the KidOS child target, verifies that containment remains active, and rolls back a partial apply if startup fails.
+
+This is the enforcement adapter layer only. A native Linux Guardian host, Linux IPC, graphical session startup, and reproducible boot image are separate milestones before KidOS can be called a standalone Linux-based OS distribution.
 
 ### Android
 
