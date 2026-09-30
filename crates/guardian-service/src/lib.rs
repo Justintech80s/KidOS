@@ -4,6 +4,7 @@ mod policy_store;
 pub mod privileged_ipc;
 mod safety_events;
 mod service_state;
+mod system_guard;
 pub mod windows_lockdown;
 
 use std::{error::Error, fmt};
@@ -12,12 +13,18 @@ pub use ipc::{
     decode_request, evaluate_guardian_request, validate_request_for_actor, GuardianActor,
     GuardianRequest, NonceTracker, RequestEnvelope, GUARDIAN_PROTOCOL_VERSION,
 };
+pub use os_foundation::{
+    AppIdentity, BootError, BootPhase, BootSequence, Capability, CapabilitySet, CoreHealth,
+    MissingCapability, ProcessRole, RecoveryEvent, RecoveryMachine, RecoveryState, SandboxProfile,
+    ServiceRoute, SessionTopology, SystemMode, TopologyError,
+};
 pub use parent_policy::{
     GuardianPolicyStore, ParentDownloadMode, ParentPolicyConfig, SocialAccessMode, SocialAccessRule,
 };
 pub use policy_store::PolicySnapshot;
 pub use safety_events::{SafetyEvent, SafetyEventError, SafetyEventStore, SafetyEventSummary};
 pub use service_state::{load_service_state, GuardianMode, GuardianState};
+pub use system_guard::guardian_mode_from_core_health;
 pub use windows_lockdown::{
     AccountRole, ApprovedApp, InMemoryWindowsLockdownAdapter, LockdownAdapterError,
     LockdownProfile, LockdownServiceError, LockdownState, LockdownStatus, ParentUnlockGrant,

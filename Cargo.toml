@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "apps/shell/src-tauri",
+  "crates/os-foundation",
   "crates/policy-core",
   "crates/secure-store",
   "crates/guardian-service",
