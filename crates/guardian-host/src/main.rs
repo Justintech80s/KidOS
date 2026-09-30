@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+mod linux_platform;
 #[cfg(target_os = "windows")]
 mod ipc_server;
 #[cfg(target_os = "windows")]
