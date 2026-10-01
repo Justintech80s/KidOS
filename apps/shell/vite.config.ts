@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  // Electron loads the production shell from file://. Relative asset URLs keep
+  // the generated JS/CSS beside index.html instead of resolving to C:\\assets.
+  base: './',
   plugins: [react()],
   clearScreen: false,
   server: {
