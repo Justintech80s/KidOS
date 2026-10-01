@@ -1,3 +1,5 @@
+import { openApprovedResource } from '../../lib/approved-online-resources';
+
 const categories = [
   ['🌎', 'Explore', 'Kid-safe discovery videos'],
   ['🧪', 'Science', 'Learn with visual experiments'],
@@ -19,6 +21,10 @@ export default function KidOSWatchScreen() {
           </article>
         ))}
       </div>
+      <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('youtube-kids'); }}>
+        ▶️ Open YouTube Kids
+      </button>
+      <p className="kidos-third-party-note">Third-party video service. YouTube Kids has its own parent controls and policies.</p>
     </section>
   );
 }

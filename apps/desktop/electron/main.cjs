@@ -4,6 +4,15 @@ const path = require('node:path');
 const isDev = Boolean(process.env.KIDOS_DESKTOP_DEV_URL);
 const isSmokeTest = process.env.KIDOS_ELECTRON_SMOKE === '1';
 
+const APPROVED_ONLINE_RESOURCES = Object.freeze({
+  kiddle: 'https://www.kiddle.co/',
+  'khan-kids': 'https://www.khanacademy.org/kids',
+  'pbs-kids': 'https://pbskids.org/games/',
+  'youtube-kids': 'https://kids.youtube.com/',
+  'family-safety': 'https://account.microsoft.com/family',
+  khanmigo: 'https://www.khanacademy.org/khan-labs',
+});
+
 function isTrustedNavigation(url) {
   if (isDev) return url.startsWith(process.env.KIDOS_DESKTOP_DEV_URL);
   return url.startsWith('file://');
@@ -91,6 +100,13 @@ app.whenReady().then(() => {
     securityMode: 'desktop-preview',
     platform: process.platform,
   }));
+
+  ipcMain.handle('kidos-desktop:open-approved-resource', async (_event, resource) => {
+    const url = APPROVED_ONLINE_RESOURCES[resource];
+    if (!url) return false;
+    await shell.openExternal(url);
+    return true;
+  });
 
   createWindow();
   app.on('activate', () => {

@@ -1,3 +1,5 @@
+import { openApprovedResource } from '../../lib/approved-online-resources';
+
 const categories = [
   ['🧩', 'Puzzles', 'Think, match, and solve'],
   ['🏎️', 'Adventure', 'Parent-approved games only'],
@@ -19,6 +21,10 @@ export default function KidOSPlayScreen() {
           </article>
         ))}
       </div>
+      <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('pbs-kids'); }}>
+        🎮 Open PBS KIDS Games
+      </button>
+      <p className="kidos-third-party-note">Third-party game service. KidOS is not affiliated with PBS.</p>
     </section>
   );
 }

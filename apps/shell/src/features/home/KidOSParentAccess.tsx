@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import KidOSProfileCard from './KidOSProfileCard';
+import { openApprovedResource } from '../../lib/approved-online-resources';
 
 export interface KidOSParentAccessProps {
   pin: string;
@@ -37,6 +38,10 @@ export default function KidOSParentAccess({ pin, statusMessage, inputRef, onPinC
         </label>
         <button className="kidos-primary-action" type="button" onClick={onUnlock}>Unlock Parent Workspace</button>
         {statusMessage && <div className="kidos-action-status" role="status">{statusMessage}</div>}
+        <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('family-safety'); }}>
+          🛡 Open Microsoft Family Safety
+        </button>
+        <p className="kidos-third-party-note">External Microsoft service for family accounts, activity, limits, and permissions.</p>
         <KidOSProfileCard profile={{ displayName: 'Alex', levelLabel: 'Explorer • Level 12' }} />
       </div>
     </section>

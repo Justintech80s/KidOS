@@ -1,4 +1,5 @@
 import { KidOSModuleHeader, KidOSPromptChips } from './KidOSModulePrimitives';
+import { openApprovedResource } from '../../lib/approved-online-resources';
 
 export interface KidOSAiScreenProps {
   value: string;
@@ -34,6 +35,12 @@ export default function KidOSAiScreen({ value, answer, onValueChange, onSubmit, 
           <input aria-label="Ask KidOS AI" value={value} onChange={(event) => onValueChange(event.target.value)} placeholder="Why is the sky blue?" />
           <button className="kidos-primary-action" type="submit">Ask safely</button>
         </form>
+      </div>
+      <div className="kidos-approved-resource-row">
+        <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('khanmigo'); }}>
+          🤖 Open Khanmigo
+        </button>
+        <span className="kidos-third-party-note">Khan Academy's separate education AI service; account and parent-access rules may apply.</span>
       </div>
       <p className="kidos-safety-note">🛡 KidOS AI stays inside this profile's active safety rules.</p>
     </section>
