@@ -49,3 +49,15 @@ test('packaged Electron build includes a renderer smoke-test gate', () => {
   assert.match(main, /data-testid="kidos-shell"/);
   assert.match(main, /did-fail-load/);
 });
+
+
+test('approved online resources are allowlisted in Electron main process', () => {
+  assert.match(main, /APPROVED_ONLINE_RESOURCES/);
+  assert.match(main, /kiddle/);
+  assert.match(main, /khan-kids/);
+  assert.match(main, /pbs-kids/);
+  assert.match(main, /youtube-kids/);
+  assert.match(main, /family-safety/);
+  assert.match(main, /khanmigo/);
+  assert.match(preload, /openApprovedResource/);
+});
