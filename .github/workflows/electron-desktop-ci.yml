@@ -38,6 +38,30 @@ jobs:
         run: pnpm --filter @kidos/desktop test
       - name: Build KidOS Desktop installer
         run: pnpm --filter @kidos/desktop build
+      - name: Verify packaged shell uses file-relative assets
+        shell: pwsh
+        run: |
+          $index = Get-Content "apps/shell/dist/index.html" -Raw
+          if ($index -match '(src|href)="/assets/') {
+            throw "Electron shell contains absolute /assets URLs and would render blank from file://."
+          }
+          if ($index -notmatch '(src|href)="\./assets/') {
+            throw "Electron shell did not produce relative ./assets URLs."
+          }
+
+      - name: Launch packaged Electron renderer smoke test
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem "apps/desktop/dist-installer/win-unpacked/*.exe" |
+            Where-Object { $_.Name -eq "KidOS Desktop.exe" } |
+            Select-Object -First 1
+          if (-not $app) { throw "Packaged KidOS Desktop executable was not generated." }
+          $env:KIDOS_ELECTRON_SMOKE = "1"
+          $process = Start-Process -FilePath $app.FullName -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "KidOS Desktop renderer smoke test failed with exit code $($process.ExitCode)."
+          }
+
       - name: Verify installer exists
         shell: pwsh
         run: |

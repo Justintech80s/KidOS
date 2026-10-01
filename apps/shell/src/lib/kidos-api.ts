@@ -82,3 +82,33 @@ export const tauriKidOSApi: KidOSApi = {
   getRecoveryStatus() { return invoke<RecoveryStatus>('get_recovery_status'); },
   runParentRecovery(pin, action) { return invoke<string>('run_parent_recovery', { pin, action }); },
 };
+
+
+function desktopUnavailable<T>(feature: string): Promise<T> {
+  return Promise.reject(new Error(`${feature} requires the protected KidOS Guardian edition.`));
+}
+
+export function isDesktopPreviewRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { kidosDesktop?: unknown }).kidosDesktop);
+}
+
+/**
+ * Electron Desktop intentionally exposes the KidOS interface without pretending
+ * that Guardian/Assigned Access protection is running. Protected operations
+ * fail closed while local UI modules remain available for desktop preview use.
+ */
+export const desktopPreviewKidOSApi: KidOSApi = {
+  planWorkspace() { return desktopUnavailable<WorkspacePlan>('Workspace planning'); },
+  evaluateNavigation() { return Promise.resolve<PolicyDecision>('block'); },
+  evaluateDownload() { return Promise.resolve<PolicyDecision>('block'); },
+  guardianStatus() { return desktopUnavailable<GuardianStatus>('Guardian status'); },
+  lockdownStatus() { return desktopUnavailable<LockdownStatus>('Windows lockdown'); },
+  configureWindowsLockdown() { return desktopUnavailable<LockdownStatus>('Windows lockdown'); },
+  requestParentMaintenanceUnlock() { return desktopUnavailable<ParentUnlockGrant>('Parent maintenance unlock'); },
+  removeWindowsLockdown() { return desktopUnavailable<LockdownStatus>('Windows lockdown'); },
+};
+
+export function runtimeKidOSApi(): KidOSApi {
+  return isDesktopPreviewRuntime() ? desktopPreviewKidOSApi : tauriKidOSApi;
+}

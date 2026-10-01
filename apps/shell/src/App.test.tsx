@@ -42,4 +42,11 @@ describe('KidOS shell', () => {
     expect(await screen.findByRole('heading', { name: 'Restricted safe mode' })).toBeTruthy();
     expect(screen.queryByTestId('kidos-shell')).toBeNull();
   });
+
+  it('loads the KidOS module shell in Electron desktop preview without claiming Guardian is active', async () => {
+    const unavailableApi: KidOSApi = { ...healthyApi, async guardianStatus() { throw new Error('guardian unavailable'); } };
+    render(<App api={unavailableApi} desktopPreview />);
+    expect(await screen.findByTestId('kidos-shell')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Restricted safe mode' })).toBeNull();
+  });
 });
