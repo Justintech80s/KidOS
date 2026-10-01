@@ -2,21 +2,28 @@ import { useEffect, useState } from 'react';
 import ChildHome from './features/home/ChildHome';
 import KidOSHomeShell from './features/home/KidOSHomeShell';
 import {
-  tauriKidOSApi,
+  isDesktopPreviewRuntime,
+  runtimeKidOSApi,
   type GuardianStatus,
   type KidOSApi,
 } from './lib/kidos-api';
 
 type ProtectionState = 'checking' | GuardianStatus;
 
-export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
+interface AppProps {
+  api?: KidOSApi;
+  desktopPreview?: boolean;
+}
+
+export default function App({ api, desktopPreview = isDesktopPreviewRuntime() }: AppProps) {
+  const activeApi = api ?? runtimeKidOSApi();
   const [protectionState, setProtectionState] = useState<ProtectionState>('checking');
   const [parentWorkspace, setParentWorkspace] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    api.guardianStatus()
+    activeApi.guardianStatus()
       .then((status) => {
         if (active) setProtectionState(status);
       })
@@ -27,7 +34,7 @@ export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [activeApi]);
 
   if (protectionState === 'checking') {
     return (
@@ -41,7 +48,7 @@ export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
     );
   }
 
-  if (protectionState === 'restricted_safe_mode') {
+  if (protectionState === 'restricted_safe_mode' && !desktopPreview) {
     return (
       <main className="kidos-shell">
         <nav className="topbar" aria-label="KidOS status">
@@ -61,8 +68,8 @@ export default function App({ api = tauriKidOSApi }: { api?: KidOSApi }) {
   }
 
   if (parentWorkspace) {
-    return <ChildHome api={api} />;
+    return <ChildHome api={activeApi} />;
   }
 
-  return <KidOSHomeShell api={api} onOpenParentWorkspace={() => setParentWorkspace(true)} />;
+  return <KidOSHomeShell api={activeApi} onOpenParentWorkspace={() => setParentWorkspace(true)} />;
 }
