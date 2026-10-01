@@ -38,6 +38,17 @@ jobs:
       - name: Build Electron Windows installer
         run: pnpm --filter @kidos/desktop build
 
+      - name: Verify packaged shell uses file-relative assets
+        shell: pwsh
+        run: |
+          $index = Get-Content "apps/shell/dist/index.html" -Raw
+          if ($index -match '(src|href)="/assets/') {
+            throw "Electron shell still contains absolute /assets URLs and would render blank from file://."
+          }
+          if ($index -notmatch '(src|href)="\./assets/') {
+            throw "Electron shell did not produce relative ./assets URLs."
+          }
+
       - name: Prepare installer for signing
         shell: pwsh
         run: |
