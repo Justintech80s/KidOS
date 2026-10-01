@@ -1,5 +1,6 @@
 import type { KidOSSystemStatus } from './system-status';
 import KidOSSafetyStatus from './KidOSSafetyStatus';
+import { openApprovedResource } from '../../lib/approved-online-resources';
 
 export interface KidOSSafeBrowserScreenProps {
   value: string;
@@ -58,6 +59,13 @@ export default function KidOSSafeBrowserScreen({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="kidos-approved-resource-row">
+        <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('kiddle'); }}>
+          🔎 Open Kiddle
+        </button>
+        <span className="kidos-third-party-note">Approved shortcut to Kiddle's child-focused search service.</span>
       </div>
 
       <KidOSSafetyStatus status={protectionStatus} />
