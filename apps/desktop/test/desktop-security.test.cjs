@@ -42,3 +42,10 @@ test('Electron desktop preview has a non-Tauri runtime adapter', () => {
   assert.match(shellApi, /isDesktopPreviewRuntime/);
   assert.match(shellApi, /evaluateNavigation\(\) \{ return Promise\.resolve<PolicyDecision>\('block'\); \}/);
 });
+
+
+test('packaged Electron build includes a renderer smoke-test gate', () => {
+  assert.match(main, /KIDOS_ELECTRON_SMOKE/);
+  assert.match(main, /data-testid="kidos-shell"/);
+  assert.match(main, /did-fail-load/);
+});
