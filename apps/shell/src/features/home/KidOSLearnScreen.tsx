@@ -1,3 +1,5 @@
+import { openApprovedResource } from '../../lib/approved-online-resources';
+
 const categories = [
   ['➗', 'Math', 'Numbers, puzzles, and problem solving'],
   ['🔬', 'Science', 'Discover how the world works'],
@@ -19,6 +21,10 @@ export default function KidOSLearnScreen() {
           </article>
         ))}
       </div>
+      <button className="kidos-approved-resource" type="button" onClick={() => { void openApprovedResource('khan-kids'); }}>
+        📘 Open Khan Academy Kids
+      </button>
+      <p className="kidos-third-party-note">Third-party learning service. KidOS is not affiliated with Khan Academy.</p>
     </section>
   );
 }
