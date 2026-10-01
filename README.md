@@ -18,6 +18,24 @@ KidOS is a child-first computing environment designed around safe browsing, pare
 
 ## ⬇️ Experimental Downloads
 
+KidOS currently has **two Windows editions**:
+
+| Edition | Best for | Guardian / Windows lockdown | Download |
+| --- | --- | --- | --- |
+| **KidOS Desktop Electron Preview** | Fast install, demos, interface testing, normal desktop use | **Not active** — no Guardian service, Assigned Access, Restricted Safe Mode, or child-account lockdown | **[⬇ Download KidOS Desktop Electron](https://github.com/Justintech80s/KidOS/releases/download/desktop-latest/KidOS-Desktop-Windows-x64-0.1.0-Setup.exe)** |
+| **KidOS Protected Experimental** | Testing the deeper Tauri + Rust Guardian architecture | **Designed for Guardian / lockdown testing**, but still experimental and not fully production-validated | **[⬇ Download KidOS Protected Experimental](https://github.com/Justintech80s/KidOS/releases/download/experimental-latest/KidOS-Windows-10-11-x64-Experimental.exe)** |
+
+### KidOS Desktop Electron Preview
+
+The Electron edition packages the KidOS React interface as a conventional Windows desktop application. It is the easiest edition to download, install, launch, and demonstrate.
+
+**Direct installer:** [KidOS-Desktop-Windows-x64-0.1.0-Setup.exe](https://github.com/Justintech80s/KidOS/releases/download/desktop-latest/KidOS-Desktop-Windows-x64-0.1.0-Setup.exe)
+
+**Release page:** [KidOS Desktop Electron Preview](https://github.com/Justintech80s/KidOS/releases/tag/desktop-latest)
+
+> The current Electron preview is **unsigned** because Microsoft Artifact Signing credentials are not configured in this repository yet. Windows may therefore show an Unknown Publisher or SmartScreen warning. The release workflow is already prepared to switch to Microsoft Artifact Signing automatically once those Azure credentials are configured.
+
+
 > ⚠️ **EXPERIMENTAL SOFTWARE — USE WITH CAUTION**
 >
 > KidOS is still in an experimental development phase. **Use it in a virtual machine (VM), a disposable Windows account, or a computer/account where you do not store important files.** Do not install the current experimental build on a primary family or work computer yet.
