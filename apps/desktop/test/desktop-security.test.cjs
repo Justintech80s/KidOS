@@ -7,6 +7,8 @@ const root = path.join(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'electron', 'main.cjs'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'electron', 'preload.cjs'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const viteConfig = fs.readFileSync(path.join(root, '..', 'shell', 'vite.config.ts'), 'utf8');
+const shellApi = fs.readFileSync(path.join(root, '..', 'shell', 'src', 'lib', 'kidos-api.ts'), 'utf8');
 
 test('Electron renderer is isolated from Node', () => {
   assert.match(main, /contextIsolation:\s*true/);
@@ -28,4 +30,15 @@ test('Windows packaging is NSIS x64', () => {
   assert.equal(pkg.build.productName, 'KidOS Desktop');
   assert.equal(pkg.build.win.target[0].target, 'nsis');
   assert.deepEqual(pkg.build.win.target[0].arch, ['x64']);
+});
+
+
+test('production shell uses relative assets for Electron file loading', () => {
+  assert.match(viteConfig, /base:\s*['"]\.\/['"]/);
+});
+
+test('Electron desktop preview has a non-Tauri runtime adapter', () => {
+  assert.match(shellApi, /desktopPreviewKidOSApi/);
+  assert.match(shellApi, /isDesktopPreviewRuntime/);
+  assert.match(shellApi, /evaluateNavigation\(\) \{ return Promise\.resolve<PolicyDecision>\('block'\); \}/);
 });
