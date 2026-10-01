@@ -46,6 +46,7 @@ jobs:
           Copy-Item $installer.FullName "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe"
 
       - name: Check Artifact Signing configuration
+        id: signing_config
         shell: pwsh
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -62,11 +63,18 @@ jobs:
           if (-not $env:ARTIFACT_SIGNING_ENDPOINT) { $missing += "ARTIFACT_SIGNING_ENDPOINT variable" }
           if (-not $env:ARTIFACT_SIGNING_ACCOUNT) { $missing += "ARTIFACT_SIGNING_ACCOUNT variable" }
           if (-not $env:ARTIFACT_SIGNING_CERTIFICATE_PROFILE) { $missing += "ARTIFACT_SIGNING_CERTIFICATE_PROFILE variable" }
-          if ($missing.Count -gt 0) {
-            throw "Artifact Signing is not configured. Missing: $($missing -join ', ')"
+
+          if ($missing.Count -eq 0) {
+            "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "Microsoft Artifact Signing is configured. The release will be signed."
+          } else {
+            "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Warning "Artifact Signing is not configured yet. Publishing an UNSIGNED Electron preview instead."
+            Write-Warning "Missing: $($missing -join ', ')"
           }
 
       - name: Azure login with GitHub OIDC
+        if: steps.signing_config.outputs.enabled == 'true'
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -74,6 +82,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign KidOS Desktop installer with Microsoft Artifact Signing
+        if: steps.signing_config.outputs.enabled == 'true'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
@@ -95,6 +104,7 @@ jobs:
           exclude-interactive-browser-credential: true
 
       - name: Verify Microsoft code signature
+        if: steps.signing_config.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $signature = Get-AuthenticodeSignature "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe"
@@ -109,15 +119,22 @@ jobs:
           $hash = (Get-FileHash "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" -Algorithm SHA256).Hash.ToLower()
           "$hash  KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" | Set-Content "KidOS-Desktop-SHA256SUMS.txt"
 
-      - name: Publish signed Desktop Preview release
+      - name: Publish Desktop Preview release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNING_ENABLED: ${{ steps.signing_config.outputs.enabled }}
         run: |
+          if ($env:SIGNING_ENABLED -eq "true") {
+            $signatureLine = "This installer is digitally signed with Microsoft Artifact Signing, and the workflow verified the Authenticode signature before publishing."
+          } else {
+            $signatureLine = "This installer is currently UNSIGNED because Microsoft Artifact Signing credentials have not yet been configured in the repository. Windows may show an Unknown Publisher or SmartScreen warning."
+          }
+
           $notes = @"
           KidOS Desktop is the fast-install Electron edition for Windows 10/11 x64.
 
-          This installer is digitally signed with Microsoft Artifact Signing and the workflow verifies the Authenticode signature before publishing.
+          $signatureLine
 
           KidOS Desktop packages the KidOS interface as a conventional Windows desktop application. It does NOT activate the Guardian Windows service, Assigned Access, Restricted Safe Mode, or child-account lockdown. Use the separate protected Tauri + Rust Guardian edition when testing those security controls.
           "@
