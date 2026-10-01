@@ -80,3 +80,18 @@ node tests/security/post-merge-workflow-contract.test.mjs
 node tests/security/release-evidence.test.mjs
 pnpm --filter @kidos/shell test --run src/features/home/system-status.test.ts
 ```
+
+## License and commercial use
+
+KidOS is proprietary software. See [LICENSE](LICENSE).
+
+Public visibility of this repository does not grant a general right to copy,
+modify, redistribute, bundle, white-label, or commercially use KidOS.
+Commercial and OEM licensing requires a separate written agreement.
+
+Third-party dependencies remain under their own licenses. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[docs/IP_COMPLIANCE.md](docs/IP_COMPLIANCE.md).
+
+External contributions are governed by
+[CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md).
