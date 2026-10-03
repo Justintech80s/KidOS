@@ -675,6 +675,7 @@ struct ApprovedDesktopAppDto {
 struct ConfigureWindowsLockdownRequest {
     account: ManagedAccountDto,
     approved_apps: Vec<ApprovedDesktopAppDto>,
+    parent_pin: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -923,7 +924,7 @@ fn configure_windows_lockdown(
 ) -> Result<LockdownStatusDto, String> {
     let profile = build_profile(&request)?;
 
-    let (ipc_state, reason) = guardian_ipc::apply(&profile)
+    let (ipc_state, reason) = guardian_ipc::apply(&profile, &request.parent_pin)
         .map_err(|error| format!("Privileged Guardian service rejected lockdown request: {error}"))?;
 
     *state
