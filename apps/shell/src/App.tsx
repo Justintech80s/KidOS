@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import ChildHome from './features/home/ChildHome';
+import KidOSParentWorkspace from './features/parent/KidOSParentWorkspace';
 import KidOSHomeShell from './features/home/KidOSHomeShell';
 import {
   isDesktopPreviewRuntime,
@@ -68,7 +68,7 @@ export default function App({ api, desktopPreview = isDesktopPreviewRuntime() }:
   }
 
   if (parentWorkspace) {
-    return <ChildHome api={activeApi} />;
+    return <KidOSParentWorkspace api={activeApi} onClose={() => setParentWorkspace(false)} />;
   }
 
   return <KidOSHomeShell api={activeApi} onOpenParentWorkspace={() => setParentWorkspace(true)} />;
