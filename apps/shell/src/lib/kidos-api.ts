@@ -75,6 +75,7 @@ export interface KidOSApi {
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   openProtectedBrowser?(url: string): Promise<void>;
   guardianStatus(): Promise<GuardianStatus>;
+  parentSetupStatus?(): Promise<boolean>;
   configureParentPin?(pin: string, currentPin?: string): Promise<void>;
   verifyParentPin?(pin: string): Promise<ParentVerification>;
   getParentPolicy?(): Promise<ParentPolicyConfig>;
@@ -101,6 +102,7 @@ export const tauriKidOSApi: KidOSApi = {
   evaluateDownload(fileName, mimeType) { return invoke<PolicyDecision>('evaluate_download_with_parent_policy', { fileName, mimeType }); },
   openProtectedBrowser(url) { return invoke<void>('open_protected_browser', { url }); },
   guardianStatus() { return invoke<GuardianStatus>('get_guardian_status'); },
+  parentSetupStatus() { return invoke<boolean>('parent_setup_status'); },
   configureParentPin(pin, currentPin) { return invoke<void>('configure_parent_pin', { pin, currentPin: currentPin ?? null }); },
   verifyParentPin(pin) { return invoke<ParentVerification>('verify_parent_pin', { pin }); },
   saveParentPolicy(pin, policy) { return invoke<{ saved: boolean }>('save_parent_policy', { pin, policy }); },
@@ -117,6 +119,7 @@ export const tauriKidOSApi: KidOSApi = {
 
 type DesktopBridge = {
   guardianStatus(): Promise<GuardianStatus>;
+  parentSetupStatus(): Promise<boolean>;
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
@@ -156,6 +159,7 @@ export const electronKidOSApi: KidOSApi = {
   evaluateDownload(fileName, mimeType) { return desktopBridge()!.evaluateDownload(fileName, mimeType); },
   openProtectedBrowser(url) { return desktopBridge()!.openProtectedBrowser(url); },
   guardianStatus() { return desktopBridge()!.guardianStatus(); },
+  parentSetupStatus() { return desktopBridge()!.parentSetupStatus(); },
   configureParentPin(pin, currentPin) { return desktopBridge()!.configureParentPin(pin, currentPin); },
   verifyParentPin(pin) { return desktopBridge()!.verifyParentPin(pin); },
   getParentPolicy() { return desktopBridge()!.getParentPolicy(); },
