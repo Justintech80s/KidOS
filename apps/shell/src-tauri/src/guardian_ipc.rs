@@ -97,8 +97,9 @@ pub fn status() -> Result<(String, Option<String>), String> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn apply(profile: &LockdownProfile) -> Result<(String, Option<String>), String> {
+pub fn apply(profile: &LockdownProfile, pin: &str) -> Result<(String, Option<String>), String> {
     match send(PrivilegedRequest::ApplyLockdown {
+        pin: pin.to_string(),
         profile: ipc_profile(profile),
     })? {
         PrivilegedResponse::Status { state, reason } => Ok((state, reason)),
