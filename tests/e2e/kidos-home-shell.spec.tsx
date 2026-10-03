@@ -87,12 +87,13 @@ describe('KidOS 2026 protected child shell', () => {
     expect(await screen.findByText('Safe workspace ready: Build a planet story')).toBeTruthy();
   });
 
-  it('keeps My Apps fail-closed without an arbitrary executable launcher', () => {
+  it('keeps My Apps fail-closed when the runtime does not expose Guardian-approved app launching', () => {
     render(<KidOSHomeShell api={makeApi([])} onOpenParentWorkspace={() => undefined} />);
     const grid = screen.getByTestId('kidos-home-grid');
     fireEvent.click(within(grid).getByRole('button', { name: /My Apps/ }));
     const appsScreen = screen.getByTestId('kidos-apps-screen');
-    expect(within(appsScreen).getByText(/trusted approved-app launch capability/)).toBeTruthy();
+    expect(within(appsScreen).getByText(/approved app launching is unavailable/i)).toBeTruthy();
+    expect(within(appsScreen).getByText(/No approved apps yet/i)).toBeTruthy();
     expect(within(appsScreen).queryByRole('textbox')).toBeNull();
   });
 });
