@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import KidOSParentWorkspace from './features/parent/KidOSParentWorkspace';
 import KidOSHomeShell from './features/home/KidOSHomeShell';
+import ParentSetup from './features/onboarding/ParentSetup';
 import {
   isDesktopPreviewRuntime,
   runtimeKidOSApi,
@@ -9,6 +10,7 @@ import {
 } from './lib/kidos-api';
 
 type ProtectionState = 'checking' | GuardianStatus;
+type ParentSetupState = 'checking' | 'required' | 'ready';
 
 interface AppProps {
   api?: KidOSApi;
@@ -18,6 +20,7 @@ interface AppProps {
 export default function App({ api, desktopPreview = isDesktopPreviewRuntime() }: AppProps) {
   const activeApi = api ?? runtimeKidOSApi();
   const [protectionState, setProtectionState] = useState<ProtectionState>('checking');
+  const [parentSetupState, setParentSetupState] = useState<ParentSetupState>('checking');
   const [parentWorkspace, setParentWorkspace] = useState(false);
 
   useEffect(() => {
@@ -31,12 +34,24 @@ export default function App({ api, desktopPreview = isDesktopPreviewRuntime() }:
         if (active) setProtectionState('restricted_safe_mode');
       });
 
+    if (activeApi.parentSetupStatus) {
+      activeApi.parentSetupStatus()
+        .then((configured) => {
+          if (active) setParentSetupState(configured ? 'ready' : 'required');
+        })
+        .catch(() => {
+          if (active) setParentSetupState('ready');
+        });
+    } else {
+      setParentSetupState('ready');
+    }
+
     return () => {
       active = false;
     };
   }, [activeApi]);
 
-  if (protectionState === 'checking') {
+  if (protectionState === 'checking' || parentSetupState === 'checking') {
     return (
       <main className="kidos-shell">
         <section className="hero" aria-live="polite">
@@ -44,6 +59,20 @@ export default function App({ api, desktopPreview = isDesktopPreviewRuntime() }:
           <h1>Checking protection...</h1>
           <p>Creation, web access, and privileged actions stay locked until Guardian is healthy.</p>
         </section>
+      </main>
+    );
+  }
+
+  if (parentSetupState === 'required') {
+    return (
+      <main className="kidos-shell">
+        <ParentSetup
+          configureParentPin={async (pin) => {
+            if (!activeApi.configureParentPin) throw new Error('Parent PIN setup is unavailable.');
+            await activeApi.configureParentPin(pin);
+          }}
+          onConfigured={() => setParentSetupState('ready')}
+        />
       </main>
     );
   }
