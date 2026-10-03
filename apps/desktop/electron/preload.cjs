@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('kidosDesktop', Object.freeze({
   evaluateDownload: (fileName, mimeType) => ipcRenderer.invoke('kidos-desktop:evaluate-download', fileName, mimeType),
   openProtectedBrowser: (url) => ipcRenderer.invoke('kidos-desktop:open-protected-browser', url),
 
+  parentSetupStatus: () => ipcRenderer.invoke('kidos-desktop:parent-setup-status'),
   configureParentPin: (pin, currentPin) => ipcRenderer.invoke('kidos-desktop:configure-parent-pin', pin, currentPin),
   verifyParentPin: (pin) => ipcRenderer.invoke('kidos-desktop:verify-parent-pin', pin),
   getParentPolicy: () => ipcRenderer.invoke('kidos-desktop:get-parent-policy'),
