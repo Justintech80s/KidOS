@@ -45,7 +45,7 @@ test('Windows packaging is an elevated per-machine KidOS NSIS installer', () => 
   assert.equal(pkg.build.productName, 'KidOS');
   assert.equal(pkg.build.win.target[0].target, 'nsis');
   assert.deepEqual(pkg.build.win.target[0].arch, ['x64']);
-  assert.equal(pkg.build.win.requestedExecutionLevel, 'requireAdministrator');
+  assert.equal(pkg.build.win.requestedExecutionLevel, 'asInvoker');
   assert.equal(pkg.build.nsis.perMachine, true);
   assert.equal(pkg.build.nsis.oneClick, false);
   assert.equal(pkg.build.nsis.include, 'build/installer.nsh');
