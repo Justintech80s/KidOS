@@ -62,7 +62,7 @@
         }
       ],
       "artifactName": "KidOS-Windows-x64-${version}-Setup.${ext}",
-      "requestedExecutionLevel": "requireAdministrator"
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
