@@ -110,6 +110,15 @@ pub fn apply(profile: &LockdownProfile, pin: &str) -> Result<(String, Option<Str
 
 
 #[cfg(target_os = "windows")]
+pub fn parent_setup_status() -> Result<bool, String> {
+    match send(PrivilegedRequest::ParentSetupStatus)? {
+        PrivilegedResponse::ParentSetup { configured } => Ok(configured),
+        PrivilegedResponse::Error { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Guardian returned an unexpected parent setup response.".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
 pub fn configure_parent_pin(new_pin: String, current_pin: Option<String>) -> Result<(), String> {
     match send(PrivilegedRequest::ConfigureParentPin { new_pin, current_pin })? {
         PrivilegedResponse::Ack { .. } => Ok(()),
