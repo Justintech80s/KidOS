@@ -9,6 +9,7 @@ describe('KidOS Windows Lockdown vertical slice', () => {
   it('lets an authorized parent prepare a standard child account and explains next sign-in', async () => {
     render(<KidOSDesktopHarness />);
     fireEvent.change(screen.getByLabelText('Child account name'), { target: { value: 'Kid' } });
+    fireEvent.change(screen.getByLabelText('Parent PIN for sensitive changes'), { target: { value: '2468' } });
     fireEvent.click(screen.getByRole('button', { name: 'Configure lockdown' }));
     expect(await screen.findByRole('status')).toHaveTextContent(/next sign-in/i);
   });

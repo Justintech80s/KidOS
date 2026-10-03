@@ -35,10 +35,12 @@ pub struct IpcLockdownProfile {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrivilegedRequest {
     Status,
+    ParentSetupStatus,
     ConfigureParentPin { new_pin: String, current_pin: Option<String> },
     VerifyParentPin { pin: String },
     SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
     GetParentPolicy,
+    EvaluateNavigation { url: String },
     EvaluateDownload {
         url: String,
         file_name: String,
@@ -62,7 +64,8 @@ pub enum PrivilegedRequest {
     },
     RecoveryStatus,
     RunRecovery { pin: String, action: String },
-    ApplyLockdown { profile: IpcLockdownProfile },
+    ListApprovedApps,
+    ApplyLockdown { pin: String, profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
 }
@@ -93,8 +96,10 @@ pub struct QuarantineItem {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
+    ParentSetup { configured: bool },
     ParentVerification { authorized: bool, locked: bool },
     ParentPolicy { policy: ParentPolicyConfig },
+    ApprovedApps { apps: Vec<IpcApprovedApp> },
     PolicyDecision { decision: String },
     MediaClassification {
         decision: String,

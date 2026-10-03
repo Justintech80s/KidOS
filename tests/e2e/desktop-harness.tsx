@@ -88,6 +88,7 @@ export function KidOSDesktopHarness({
       return lockdownStatus;
     },
     async configureWindowsLockdown(request) {
+      if (request.parentPin !== '2468') throw new Error('authorization denied');
       setLockdownState('preparing');
       return {
         state: 'preparing',

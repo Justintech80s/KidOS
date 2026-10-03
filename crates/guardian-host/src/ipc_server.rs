@@ -28,7 +28,9 @@ use base64::Engine;
 #[cfg(target_os = "windows")]
 use policy_core::{
     evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
-    DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, PolicyDecision,
+    evaluate_navigation as evaluate_navigation_policy,
+    DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, NavigationContext,
+    PolicyDecision,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
@@ -340,6 +342,55 @@ fn validate_approved_executable(app: &guardian_service::privileged_ipc::IpcAppro
         .ok_or_else(|| format!("Approved app '{}' path is not valid Unicode.", app.display_name))
 }
 
+
+#[cfg(target_os = "windows")]
+fn host_from_url(url: &str) -> &str {
+    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(without_scheme)
+        .split(':')
+        .next()
+        .unwrap_or(without_scheme)
+}
+
+#[cfg(target_os = "windows")]
+fn domain_matches(host: &str, rule: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    let rule = rule.trim().trim_end_matches('.').to_ascii_lowercase();
+    host == rule || host.ends_with(&format!(".{rule}"))
+}
+
+#[cfg(target_os = "windows")]
+fn guardian_navigation_decision(url: &str, policy: &ParentPolicyConfig) -> &'static str {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return "block";
+    }
+    let host = host_from_url(url);
+    let parent_blocked = policy.block_domains.iter().any(|rule| domain_matches(host, rule));
+    let parent_allowed = policy.allow_domains.iter().any(|rule| domain_matches(host, rule));
+    let context = NavigationContext::new(host, policy.child_age)
+        .with_parent_blocked(parent_blocked)
+        .with_parent_allowed(parent_allowed)
+        .with_unknown_web_enabled(policy.teen_unknown_web_enabled);
+    match evaluate_navigation_policy(&context) {
+        PolicyDecision::Allow => "allow",
+        PolicyDecision::Block => "block",
+        PolicyDecision::RequireParent => "require_parent",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn load_approved_apps() -> Vec<guardian_service::privileged_ipc::IpcApprovedApp> {
+    let Ok(bytes) = fs::read(lockdown_backup_path().unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian\last-lockdown-profile.json"))) else {
+        return Vec::new();
+    };
+    let Ok(profile) = serde_json::from_slice::<guardian_service::privileged_ipc::IpcLockdownProfile>(&bytes) else {
+        return Vec::new();
+    };
+    profile.apps
+}
 
 #[cfg(target_os = "windows")]
 fn guardian_download_decision(
@@ -770,6 +821,9 @@ fn handle_request(
             let (state, reason) = current_platform_state();
             PrivilegedResponse::Status { state, reason }
         }
+        PrivilegedRequest::ParentSetupStatus => PrivilegedResponse::ParentSetup {
+            configured: pin_is_initialized(),
+        },
         PrivilegedRequest::ConfigureParentPin { new_pin, current_pin } => {
             if !(4..=8).contains(&new_pin.len()) || !new_pin.chars().all(|ch| ch.is_ascii_digit()) {
                 return error_response("invalid_parent_pin", "Parent PIN must contain 4 through 8 digits.");
@@ -821,6 +875,13 @@ fn handle_request(
         }
         PrivilegedRequest::GetParentPolicy => PrivilegedResponse::ParentPolicy {
             policy: parent_policy.current_parent_policy().clone(),
+        },
+        PrivilegedRequest::EvaluateNavigation { url } => {
+            let decision = guardian_navigation_decision(&url, parent_policy.current_parent_policy());
+            PrivilegedResponse::PolicyDecision { decision: decision.into() }
+        }
+        PrivilegedRequest::ListApprovedApps => PrivilegedResponse::ApprovedApps {
+            apps: load_approved_apps(),
         },
         PrivilegedRequest::EvaluateDownload {
             url,
@@ -1045,7 +1106,13 @@ fn handle_request(
                 _ => error_response("invalid_recovery_action", "KidOS rejected an unknown recovery action."),
             }
         }
-        PrivilegedRequest::ApplyLockdown { profile } => {
+        PrivilegedRequest::ApplyLockdown { pin, profile } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
             if let Err(error) = persist_lockdown_profile(&profile) {
                 return error_response("recovery_backup_failed", error);
             }
@@ -1103,7 +1170,12 @@ fn handle_request(
                 Err(error) => return error_response("parent_pin_error", error),
             }
             match lockdown_service.remove_lockdown(true) {
-                Ok(()) => PrivilegedResponse::Status { state: "unmanaged".into(), reason: None },
+                Ok(()) => {
+                    if let Ok(path) = lockdown_backup_path() {
+                        let _ = fs::remove_file(path);
+                    }
+                    PrivilegedResponse::Status { state: "unmanaged".into(), reason: None }
+                }
                 Err(error) => error_response("remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
             }
         }

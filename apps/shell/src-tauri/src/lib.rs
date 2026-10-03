@@ -43,6 +43,18 @@ pub fn save_parent_policy_with_authorization<S: SecretStore>(authorization: &mut
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn parent_setup_status() -> Result<bool, String> {
+    guardian_ipc::parent_setup_status()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn parent_setup_status() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn configure_parent_pin(pin: String, current_pin: Option<String>) -> Result<(), String> {
     guardian_ipc::configure_parent_pin(pin, current_pin)
 }
@@ -77,6 +89,18 @@ fn verify_parent_pin(_pin: String) -> Result<ParentVerificationDto, String> {
 #[serde(rename_all = "camelCase")]
 struct ParentPolicySaveDto {
     saved: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_parent_policy_command() -> Result<ParentPolicyConfig, String> {
+    guardian_ipc::get_parent_policy()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn get_parent_policy_command() -> Result<ParentPolicyConfig, String> {
+    Ok(ParentPolicyConfig::default())
 }
 
 #[cfg(target_os = "windows")]
@@ -675,6 +699,7 @@ struct ApprovedDesktopAppDto {
 struct ConfigureWindowsLockdownRequest {
     account: ManagedAccountDto,
     approved_apps: Vec<ApprovedDesktopAppDto>,
+    parent_pin: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -923,7 +948,7 @@ fn configure_windows_lockdown(
 ) -> Result<LockdownStatusDto, String> {
     let profile = build_profile(&request)?;
 
-    let (ipc_state, reason) = guardian_ipc::apply(&profile)
+    let (ipc_state, reason) = guardian_ipc::apply(&profile, &request.parent_pin)
         .map_err(|error| format!("Privileged Guardian service rejected lockdown request: {error}"))?;
 
     *state
@@ -986,8 +1011,10 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            parent_setup_status,
             configure_parent_pin,
             verify_parent_pin,
+            get_parent_policy_command,
             save_parent_policy,
             evaluate_navigation_with_parent_policy,
             evaluate_download_with_parent_policy,

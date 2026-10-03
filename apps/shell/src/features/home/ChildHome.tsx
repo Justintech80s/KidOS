@@ -339,8 +339,13 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
 
   async function applyWindowsLockdown() {
     const accountName = lockdownAccount.trim();
+    const pin = lockdownParentPin.trim();
     if (!accountName) {
       setLockdownMessage('Enter the Windows standard child account name.');
+      return;
+    }
+    if (!pin) {
+      setLockdownMessage('Enter the parent PIN before applying Windows lockdown.');
       return;
     }
     try {
@@ -350,6 +355,7 @@ export default function ChildHome({ api }: { api: KidOSApi }) {
           { id: 'kidos', displayName: 'KidOS', executablePath: 'KidOS.exe' },
           ...approvedApps,
         ],
+        parentPin: pin,
       });
       setLockdownUiStatus(status);
       setLockdownMessage(

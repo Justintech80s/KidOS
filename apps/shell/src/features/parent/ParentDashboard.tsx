@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import type { DownloadMode, LockdownStatus, ParentPolicyConfig, SocialAccessMode } from '@kidos/contracts';
 import type { KidOSApi } from '../../lib/kidos-api';
 import LockdownSettings from './LockdownSettings';
@@ -13,6 +13,7 @@ type ParentDashboardProps = {
   clearSafetyEvents?: () => Promise<void>;
   lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown' | 'listQuarantineMedia' | 'previewQuarantineMedia' | 'reviewQuarantineMedia' | 'getRecoveryStatus' | 'runParentRecovery'>;
   initialLockdownStatus?: LockdownStatus;
+  initialPolicy?: ParentPolicyConfig;
 };
 
 function splitDomains(value: string): string[] {
@@ -25,18 +26,33 @@ function timeToMinutes(value: string): number | undefined {
   return hours * 60 + minutes;
 }
 
-export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi, initialLockdownStatus }: ParentDashboardProps) {
-  const [childAge, setChildAge] = useState(10);
-  const [allowDomains, setAllowDomains] = useState('');
-  const [blockDomains, setBlockDomains] = useState('');
-  const [teenUnknownWebEnabled, setTeenUnknownWebEnabled] = useState(false);
-  const [socialService, setSocialService] = useState('');
-  const [socialMode, setSocialMode] = useState<SocialAccessMode>('blocked');
-  const [socialStart, setSocialStart] = useState('');
-  const [socialEnd, setSocialEnd] = useState('');
-  const [downloadMode, setDownloadMode] = useState<DownloadMode>('require_parent_high_risk');
+export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi, initialLockdownStatus, initialPolicy }: ParentDashboardProps) {
+  const [childAge, setChildAge] = useState(initialPolicy?.childAge ?? 10);
+  const [allowDomains, setAllowDomains] = useState((initialPolicy?.allowDomains ?? []).join('\n'));
+  const [blockDomains, setBlockDomains] = useState((initialPolicy?.blockDomains ?? []).join('\n'));
+  const [teenUnknownWebEnabled, setTeenUnknownWebEnabled] = useState(initialPolicy?.teenUnknownWebEnabled ?? false);
+  const firstSocial = initialPolicy?.socialAccess?.[0];
+  const [socialService, setSocialService] = useState(firstSocial?.service ?? '');
+  const [socialMode, setSocialMode] = useState<SocialAccessMode>(firstSocial?.mode ?? 'blocked');
+  const [socialStart, setSocialStart] = useState(firstSocial?.startMinutes !== undefined ? `${String(Math.floor(firstSocial.startMinutes / 60)).padStart(2, '0')}:${String(firstSocial.startMinutes % 60).padStart(2, '0')}` : '');
+  const [socialEnd, setSocialEnd] = useState(firstSocial?.endMinutes !== undefined ? `${String(Math.floor(firstSocial.endMinutes / 60)).padStart(2, '0')}:${String(firstSocial.endMinutes % 60).padStart(2, '0')}` : '');
+  const [downloadMode, setDownloadMode] = useState<DownloadMode>(initialPolicy?.downloadMode ?? 'require_parent_high_risk');
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialPolicy) return;
+    setChildAge(initialPolicy.childAge);
+    setAllowDomains(initialPolicy.allowDomains.join('\n'));
+    setBlockDomains(initialPolicy.blockDomains.join('\n'));
+    setTeenUnknownWebEnabled(initialPolicy.teenUnknownWebEnabled);
+    const rule = initialPolicy.socialAccess[0];
+    setSocialService(rule?.service ?? '');
+    setSocialMode(rule?.mode ?? 'blocked');
+    setSocialStart(rule?.startMinutes !== undefined ? `${String(Math.floor(rule.startMinutes / 60)).padStart(2, '0')}:${String(rule.startMinutes % 60).padStart(2, '0')}` : '');
+    setSocialEnd(rule?.endMinutes !== undefined ? `${String(Math.floor(rule.endMinutes / 60)).padStart(2, '0')}:${String(rule.endMinutes % 60).padStart(2, '0')}` : '');
+    setDownloadMode(initialPolicy.downloadMode);
+  }, [initialPolicy]);
 
   if (!authorized) return <section aria-label="Parent controls"><h1>Parent authorization required</h1><p>KidOS keeps parent safety settings locked while the child environment is active.</p></section>;
 

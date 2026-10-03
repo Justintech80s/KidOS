@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KidOSApi } from '../../lib/kidos-api';
+import type { ApprovedAppSummary, KidOSApi, WellbeingSettings } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 import KidOSAiScreen from './KidOSAiScreen';
 import KidOSCreateScreen from './KidOSCreateScreen';
@@ -17,6 +17,14 @@ import KidOSWellbeingScreen from './KidOSWellbeingScreen';
 import { OFFLINE_KIDOS_STATUS, normalizeKidOSSystemStatus, type KidOSSystemStatus } from './system-status';
 import './kidos-shell-2026.css';
 
+const DEFAULT_WELLBEING: WellbeingSettings = {
+  dailyMinutes: 120,
+  breakEveryMinutes: 30,
+  windDownHour: 20,
+  largeText: false,
+  reducedMotion: false,
+};
+
 export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: KidOSApi; onOpenParentWorkspace(): void }) {
   const [active, setActive] = useState<KidOSDestination>('home');
   const [status, setStatus] = useState<KidOSSystemStatus>(OFFLINE_KIDOS_STATUS);
@@ -28,6 +36,10 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
   const [parentStatus, setParentStatus] = useState('');
+  const [approvedApps, setApprovedApps] = useState<ApprovedAppSummary[]>([]);
+  const [appsStatus, setAppsStatus] = useState('Loading Guardian-approved apps...');
+  const [wellbeing, setWellbeing] = useState<WellbeingSettings>(DEFAULT_WELLBEING);
+  const [wellbeingStatus, setWellbeingStatus] = useState('Loading wellbeing settings...');
   const parentPinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,6 +72,85 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     const id = window.setInterval(refresh, 10_000);
     return () => { mounted = false; window.clearInterval(id); };
   }, [api]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadChildServices() {
+      if (api.listApprovedApps) {
+        try {
+          const apps = await api.listApprovedApps();
+          if (active) {
+            setApprovedApps(apps);
+            setAppsStatus(apps.length ? 'Approved apps are ready.' : 'No extra apps are approved yet.');
+          }
+        } catch {
+          if (active) setAppsStatus('Guardian approved-app profile is unavailable.');
+        }
+      } else if (active) {
+        setAppsStatus('Approved app launching is unavailable in this build.');
+      }
+
+      if (api.getWellbeing) {
+        try {
+          const next = await api.getWellbeing();
+          if (active) {
+            setWellbeing(next);
+            setWellbeingStatus('Wellbeing settings loaded.');
+          }
+        } catch {
+          if (active) setWellbeingStatus('Using default wellbeing settings.');
+        }
+      } else if (active) {
+        setWellbeingStatus('Wellbeing settings are local to the Electron build.');
+      }
+    }
+    void loadChildServices();
+    return () => { active = false; };
+  }, [api]);
+
+  async function refreshApprovedApps() {
+    if (!api.listApprovedApps) {
+      setAppsStatus('Approved app launching is unavailable in this build.');
+      return;
+    }
+    setAppsStatus('Checking Guardian-approved apps...');
+    try {
+      const apps = await api.listApprovedApps();
+      setApprovedApps(apps);
+      setAppsStatus(apps.length ? 'Approved apps refreshed.' : 'No extra apps are approved yet.');
+    } catch {
+      setAppsStatus('Guardian approved-app profile could not be read.');
+    }
+  }
+
+  async function launchApprovedApp(appId: string) {
+    if (!api.launchApprovedApp) {
+      setAppsStatus('Approved app launching is unavailable in this build.');
+      return;
+    }
+    setAppsStatus('Launching approved app...');
+    try {
+      await api.launchApprovedApp(appId);
+      setAppsStatus('Approved app launched.');
+    } catch {
+      setAppsStatus('KidOS blocked or could not launch that app.');
+    }
+  }
+
+  async function saveWellbeing() {
+    if (!api.saveWellbeing) {
+      setWellbeingStatus('Wellbeing saving is unavailable in this build.');
+      return;
+    }
+    setWellbeingStatus('Saving wellbeing settings...');
+    try {
+      const saved = await api.saveWellbeing(wellbeing);
+      setWellbeing(saved);
+      setWellbeingStatus('Wellbeing settings saved on this device.');
+    } catch {
+      setWellbeingStatus('KidOS could not save wellbeing settings.');
+    }
+  }
 
   async function runSafeSearch(query: string) {
     setActive('browser');
@@ -109,21 +200,25 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     }
   }
 
-  function answerAi(query: string) {
+  async function answerAi(query: string) {
     const q = query.trim();
     if (!q) return;
     setAiValue(q);
-    setAiAnswer(/space|planet/i.test(q)
-      ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.'
-      : /math|\d/.test(q)
-        ? 'Break the problem into small steps, solve one step at a time, then check your answer.'
-        : /sky/i.test(q)
-          ? 'The sky looks blue because sunlight is scattered by gases in Earth’s atmosphere, and blue light scatters strongly.'
-          : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+    setAiAnswer('KidOS AI is checking the protected learning service...');
+    if (!api.askAi) {
+      setAiAnswer('KidOS AI is not connected in this build.');
+      return;
+    }
+    try {
+      const result = await api.askAi(q);
+      setAiAnswer(result.answer);
+    } catch {
+      setAiAnswer('KidOS AI could not answer safely right now. Try again later or ask a parent or teacher.');
+    }
   }
 
   function askAi() {
-    answerAi(aiValue);
+    void answerAi(aiValue);
   }
 
   async function requestParent() {
@@ -153,9 +248,9 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       case 'watch':
         return <KidOSWatchScreen />;
       case 'wellbeing':
-        return <KidOSWellbeingScreen />;
+        return <KidOSWellbeingScreen settings={wellbeing} statusMessage={wellbeingStatus} onChange={setWellbeing} onSave={() => { void saveWellbeing(); }} />;
       case 'apps':
-        return <KidOSMyAppsScreen />;
+        return <KidOSMyAppsScreen apps={approvedApps} statusMessage={appsStatus} onRefresh={() => { void refreshApprovedApps(); }} onLaunch={(appId) => { void launchApprovedApp(appId); }} />;
       case 'browser':
         return (
           <KidOSSafeBrowserScreen
@@ -184,7 +279,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
             answer={aiAnswer}
             onValueChange={setAiValue}
             onSubmit={askAi}
-            onSuggestion={answerAi}
+            onSuggestion={(prompt) => { void answerAi(prompt); }}
           />
         );
       case 'parent':

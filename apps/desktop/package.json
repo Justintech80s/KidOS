@@ -2,7 +2,7 @@
   "name": "@kidos/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "KidOS Desktop - downloadable Electron edition",
+  "description": "KidOS for Windows - child-safe Electron experience backed by KidOS Guardian",
   "author": "KidOS",
   "main": "electron/main.cjs",
   "scripts": {
@@ -19,11 +19,12 @@
     "wait-on": "^8.0.4"
   },
   "build": {
-    "appId": "com.kidos.desktop",
-    "productName": "KidOS Desktop",
+    "appId": "com.justintech80s.kidos",
+    "productName": "KidOS",
     "asar": true,
     "directories": {
-      "output": "dist-installer"
+      "output": "dist-installer",
+      "buildResources": "build"
     },
     "files": [
       "electron/**/*",
@@ -33,24 +34,45 @@
       {
         "from": "../shell/dist",
         "to": "shell"
+      },
+      {
+        "from": "../../target/release/kidos-guardian-host.exe",
+        "to": "backend/kidos-guardian-host.exe"
+      },
+      {
+        "from": "../../services/media-classifier/dist/kidos-media-classifier-bundle.zip",
+        "to": "backend/kidos-media-classifier-bundle.zip"
+      },
+      {
+        "from": "../../services/media-classifier/dist/model",
+        "to": "backend/model"
+      },
+      {
+        "from": "../../scripts/windows",
+        "to": "backend/scripts"
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "KidOS-Desktop-Windows-x64-${version}-Setup.${ext}"
+      "artifactName": "KidOS-Windows-x64-${version}-Setup.${ext}",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": false,
+      "oneClick": false,
+      "perMachine": true,
       "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KidOS Desktop"
+      "shortcutName": "KidOS",
+      "include": "build/installer.nsh"
     }
   }
 }

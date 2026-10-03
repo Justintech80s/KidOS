@@ -1,4 +1,4 @@
-name: KidOS Desktop Release
+name: KidOS Windows Electron Release
 
 on:
   push:
@@ -6,6 +6,10 @@ on:
     paths:
       - "apps/desktop/**"
       - "apps/shell/**"
+      - "packages/**"
+      - "crates/**"
+      - "services/media-classifier/**"
+      - "scripts/windows/**"
       - ".github/workflows/electron-desktop-release.yml"
   workflow_dispatch:
 
@@ -14,9 +18,9 @@ permissions:
   id-token: write
 
 jobs:
-  publish-electron-desktop:
+  publish-electron-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,21 +33,51 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
       - name: Test Electron security boundary
         run: pnpm --filter @kidos/desktop test
 
-      - name: Build Electron Windows installer
+      - name: Test Guardian protocol
+        run: |
+          cargo test -p guardian-service
+          cargo check -p kidos-guardian-host
+
+      - name: Package local AI media classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+
+      - name: Build privileged Guardian service
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Build full KidOS Electron Windows installer
         run: pnpm --filter @kidos/desktop build
+
+      - name: Verify full backend is bundled
+        shell: pwsh
+        run: |
+          $resources = "apps/desktop/dist-installer/win-unpacked/resources/backend"
+          if (-not (Test-Path "$resources/kidos-guardian-host.exe")) { throw "Guardian binary is missing from Electron package." }
+          if (-not (Test-Path "$resources/kidos-media-classifier-bundle.zip")) { throw "Classifier bundle is missing from Electron package." }
+          if (-not (Test-Path "$resources/model/config.json")) { throw "Classifier model is missing from Electron package." }
+          if (-not (Test-Path "$resources/scripts/install-electron-backend.ps1")) { throw "Backend installer is missing." }
+          if (-not (Test-Path "$resources/scripts/uninstall-electron-backend.ps1")) { throw "Backend uninstaller is missing." }
 
       - name: Verify packaged shell uses file-relative assets
         shell: pwsh
         run: |
           $index = Get-Content "apps/shell/dist/index.html" -Raw
           if ($index -match '(src|href)="/assets/') {
-            throw "Electron shell still contains absolute /assets URLs and would render blank from file://."
+            throw "Electron shell contains absolute /assets URLs and would render blank from file://."
           }
           if ($index -notmatch '(src|href)="\./assets/') {
             throw "Electron shell did not produce relative ./assets URLs."
@@ -53,21 +87,21 @@ jobs:
         shell: pwsh
         run: |
           $app = Get-ChildItem "apps/desktop/dist-installer/win-unpacked/*.exe" |
-            Where-Object { $_.Name -eq "KidOS Desktop.exe" } |
+            Where-Object { $_.Name -eq "KidOS.exe" } |
             Select-Object -First 1
-          if (-not $app) { throw "Packaged KidOS Desktop executable was not generated." }
+          if (-not $app) { throw "Packaged KidOS executable was not generated." }
           $env:KIDOS_ELECTRON_SMOKE = "1"
           $process = Start-Process -FilePath $app.FullName -PassThru -Wait
           if ($process.ExitCode -ne 0) {
-            throw "KidOS Desktop renderer smoke test failed with exit code $($process.ExitCode)."
+            throw "KidOS Electron renderer smoke test failed with exit code $($process.ExitCode)."
           }
 
-      - name: Prepare installer for signing
+      - name: Prepare release installer
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "apps/desktop/dist-installer/*.exe" | Select-Object -First 1
-          if (-not $installer) { throw "KidOS Desktop installer was not produced." }
-          Copy-Item $installer.FullName "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe"
+          $installer = Get-ChildItem "apps/desktop/dist-installer/KidOS-Windows-x64-*-Setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "KidOS Windows installer was not produced." }
+          Copy-Item $installer.FullName "KidOS-Windows-x64-0.1.0-Setup.exe"
 
       - name: Check Artifact Signing configuration
         id: signing_config
@@ -90,10 +124,10 @@ jobs:
 
           if ($missing.Count -eq 0) {
             "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            Write-Host "Microsoft Artifact Signing is configured. The release will be signed."
+            Write-Host "Microsoft Artifact Signing is configured for the outer installer."
           } else {
             "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            Write-Warning "Artifact Signing is not configured yet. Publishing an UNSIGNED Electron preview instead."
+            Write-Warning "Artifact Signing is not configured. Publishing an UNSIGNED pre-production KidOS installer."
             Write-Warning "Missing: $($missing -join ', ')"
           }
 
@@ -105,14 +139,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign KidOS Desktop installer with Microsoft Artifact Signing
+      - name: Sign KidOS Windows installer with Microsoft Artifact Signing
         if: steps.signing_config.outputs.enabled == 'true'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
-          files: ${{ github.workspace }}\KidOS-Desktop-Windows-x64-0.1.0-Setup.exe
+          files: ${{ github.workspace }}\KidOS-Windows-x64-0.1.0-Setup.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -127,45 +161,48 @@ jobs:
           exclude-azure-developer-cli-credential: true
           exclude-interactive-browser-credential: true
 
-      - name: Verify Microsoft code signature
+      - name: Verify outer installer signature
         if: steps.signing_config.outputs.enabled == 'true'
         shell: pwsh
         run: |
-          $signature = Get-AuthenticodeSignature "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe"
+          $signature = Get-AuthenticodeSignature "KidOS-Windows-x64-0.1.0-Setup.exe"
           $signature | Format-List Status,StatusMessage,SignerCertificate,TimeStamperCertificate
           if ($signature.Status -ne "Valid") {
-            throw "KidOS Desktop installer does not have a valid Authenticode signature."
+            throw "KidOS Windows installer does not have a valid Authenticode signature."
           }
 
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
-          $hash = (Get-FileHash "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" | Set-Content "KidOS-Desktop-SHA256SUMS.txt"
+          $hash = (Get-FileHash "KidOS-Windows-x64-0.1.0-Setup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  KidOS-Windows-x64-0.1.0-Setup.exe" | Set-Content "KidOS-Windows-SHA256SUMS.txt"
 
-      - name: Publish Desktop Preview release
+      - name: Publish Guardian-backed Electron prerelease
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           SIGNING_ENABLED: ${{ steps.signing_config.outputs.enabled }}
         run: |
           if ($env:SIGNING_ENABLED -eq "true") {
-            $signatureLine = "This installer is digitally signed with Microsoft Artifact Signing, and the workflow verified the Authenticode signature before publishing."
+            $signatureLine = "The outer installer is digitally signed with Microsoft Artifact Signing and its Authenticode signature was verified before publishing."
           } else {
-            $signatureLine = "This installer is currently UNSIGNED because Microsoft Artifact Signing credentials have not yet been configured in the repository. Windows may show an Unknown Publisher or SmartScreen warning."
+            $signatureLine = "This pre-production installer is currently UNSIGNED. Windows may show an Unknown Publisher or SmartScreen warning."
           }
 
           $notes = @"
-          KidOS Desktop is the fast-install Electron edition for Windows 10/11 x64.
+          KidOS for Windows now uses the Electron interface as the main downloadable experience while installing the KidOS Guardian Windows service, local media classifier, recovery components, parent controls, protected browsing, and Windows lockdown backend.
 
           $signatureLine
 
-          KidOS Desktop packages the KidOS interface as a conventional Windows desktop application. It does NOT activate the Guardian Windows service, Assigned Access, Restricted Safe Mode, or child-account lockdown. Use the separate protected Tauri + Rust Guardian edition when testing those security controls.
+          This remains a PRE-PRODUCTION release. It should be tested on a disposable Windows test account or test PC until real reboot → child-login → Assigned Access validation, multi-day real-use testing, and the complete trusted-signing gate have passed.
+
+          The installer requires administrator approval during setup so it can install the Guardian and classifier services. The KidOS application itself runs as the standard child user.
           "@
+
           gh release view desktop-latest --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload desktop-latest "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" "KidOS-Desktop-SHA256SUMS.txt" --clobber --repo "${{ github.repository }}"
-            gh release edit desktop-latest --title "KidOS Desktop Electron Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
+            gh release upload desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" --clobber --repo "${{ github.repository }}"
+            gh release edit desktop-latest --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
           } else {
-            gh release create desktop-latest "KidOS-Desktop-Windows-x64-0.1.0-Setup.exe" "KidOS-Desktop-SHA256SUMS.txt" --title "KidOS Desktop Electron Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
+            gh release create desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
           }
