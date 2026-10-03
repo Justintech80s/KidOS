@@ -105,6 +105,7 @@ export const tauriKidOSApi: KidOSApi = {
   parentSetupStatus() { return invoke<boolean>('parent_setup_status'); },
   configureParentPin(pin, currentPin) { return invoke<void>('configure_parent_pin', { pin, currentPin: currentPin ?? null }); },
   verifyParentPin(pin) { return invoke<ParentVerification>('verify_parent_pin', { pin }); },
+  getParentPolicy() { return invoke<ParentPolicyConfig>('get_parent_policy_command'); },
   saveParentPolicy(pin, policy) { return invoke<{ saved: boolean }>('save_parent_policy', { pin, policy }); },
   lockdownStatus() { return invoke<LockdownStatus>('lockdown_status'); },
   configureWindowsLockdown(request) { return invoke<LockdownStatus>('configure_windows_lockdown', { request }); },
