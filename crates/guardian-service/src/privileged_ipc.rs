@@ -35,6 +35,7 @@ pub struct IpcLockdownProfile {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrivilegedRequest {
     Status,
+    ParentSetupStatus,
     ConfigureParentPin { new_pin: String, current_pin: Option<String> },
     VerifyParentPin { pin: String },
     SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
@@ -95,6 +96,7 @@ pub struct QuarantineItem {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
+    ParentSetup { configured: bool },
     ParentVerification { authorized: bool, locked: bool },
     ParentPolicy { policy: ParentPolicyConfig },
     ApprovedApps { apps: Vec<IpcApprovedApp> },
