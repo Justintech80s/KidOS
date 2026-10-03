@@ -29,6 +29,8 @@ if (Test-Path -LiteralPath $stopServices) {
   if ($LASTEXITCODE -ne 0) { throw 'KidOS could not stop its protection services.' }
 }
 
-Remove-Item -LiteralPath $programRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $programRoot 'Guardian') -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $programRoot 'MediaClassifier') -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $programRoot 'Recovery') -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $env:ProgramData 'KidOS') -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'KidOS backend removed after Windows account recovery.'
+Write-Host 'KidOS backend removed after Windows account recovery. Electron uninstaller will remove the app files.'
