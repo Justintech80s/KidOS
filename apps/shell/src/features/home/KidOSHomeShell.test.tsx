@@ -9,6 +9,11 @@ const api: KidOSApi = {
   async evaluateNavigation() { return 'require_parent'; },
   async evaluateDownload() { return 'require_parent'; },
   async guardianStatus() { return 'healthy'; },
+  async askAi(query) {
+    if (/planet|space/i.test(query)) return { available: true, answer: 'Earth is one of eight planets orbiting our Sun.' };
+    if (/math/i.test(query)) return { available: true, answer: 'Break the problem into small steps, solve one step at a time, then check your answer.' };
+    return { available: true, answer: 'KidOS AI safe test answer.' };
+  },
   async lockdownStatus() { return { state: 'unmanaged', capability }; },
   async configureWindowsLockdown(request) { return { state: 'preparing', capability, managedAccount: request.account }; },
   async requestParentMaintenanceUnlock() { return { grantedAt: '2026-09-03T00:45:00Z', expiresAt: '2026-09-03T01:00:00Z' }; },
@@ -69,20 +74,20 @@ describe('KidOSHomeShell', () => {
     expect(await screen.findByText('KidOS could not prepare the workspace safely.')).toBeTruthy();
   });
 
-  it('renders KidOS AI answers inside the dedicated safe module', () => {
+  it('renders KidOS AI answers from the protected backend inside the dedicated safe module', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('KidOS AI');
     const input = screen.getByLabelText('Ask KidOS AI');
     fireEvent.change(input, { target: { value: 'Tell me about planets' } });
     fireEvent.submit(input.closest('form')!);
-    expect(screen.getByText(/Earth is one of eight planets/)).toBeTruthy();
+    expect(await screen.findByText(/Earth is one of eight planets/)).toBeTruthy();
   });
 
-  it('supports child-friendly KidOS AI suggestion prompts', () => {
+  it('supports child-friendly KidOS AI suggestion prompts through the backend', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('KidOS AI');
     fireEvent.click(screen.getByRole('button', { name: 'Help me with math' }));
-    expect(screen.getByText(/Break the problem into small steps/)).toBeTruthy();
+    expect(await screen.findByText(/Break the problem into small steps/)).toBeTruthy();
   });
 
   it('routes safe search through policy evaluation and keeps require-parent closed', async () => {
