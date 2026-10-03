@@ -43,6 +43,18 @@ pub fn save_parent_policy_with_authorization<S: SecretStore>(authorization: &mut
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn parent_setup_status() -> Result<bool, String> {
+    guardian_ipc::parent_setup_status()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn parent_setup_status() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn configure_parent_pin(pin: String, current_pin: Option<String>) -> Result<(), String> {
     guardian_ipc::configure_parent_pin(pin, current_pin)
 }
@@ -987,6 +999,7 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            parent_setup_status,
             configure_parent_pin,
             verify_parent_pin,
             save_parent_policy,
