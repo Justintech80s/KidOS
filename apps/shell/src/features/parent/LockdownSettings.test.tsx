@@ -34,8 +34,10 @@ describe('LockdownSettings', () => {
   it('explains that configuration takes effect at the next child sign-in', async () => {
     render(<LockdownSettings authorized api={api} />);
     fireEvent.change(screen.getByLabelText(/account name/i), { target: { value: 'Kid' } });
+    fireEvent.change(screen.getByLabelText(/parent pin for sensitive changes/i), { target: { value: '2468' } });
     fireEvent.click(screen.getByRole('button', { name: /configure lockdown/i }));
     expect(await screen.findByRole('status')).toHaveTextContent(/next sign-in/i);
+    expect(api.configureWindowsLockdown).toHaveBeenCalledWith(expect.objectContaining({ parentPin: '2468' }));
   });
 
   it('shows restricted safe mode prominently', () => {
