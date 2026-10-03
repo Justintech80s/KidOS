@@ -1170,7 +1170,12 @@ fn handle_request(
                 Err(error) => return error_response("parent_pin_error", error),
             }
             match lockdown_service.remove_lockdown(true) {
-                Ok(()) => PrivilegedResponse::Status { state: "unmanaged".into(), reason: None },
+                Ok(()) => {
+                    if let Ok(path) = lockdown_backup_path() {
+                        let _ = fs::remove_file(path);
+                    }
+                    PrivilegedResponse::Status { state: "unmanaged".into(), reason: None }
+                }
                 Err(error) => error_response("remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
             }
         }
