@@ -54,7 +54,10 @@ Run-Script (Join-Path $scriptsDir 'extract-media-classifier.ps1') @(
   '-ArchivePath', $classifierArchive,
   '-DestinationPath', $classifierDir
 )
-Copy-Item -LiteralPath $modelSource -Destination (Join-Path $classifierDir 'model') -Recurse -Force
+$modelDestination = Join-Path $classifierDir 'model'
+Remove-Item -LiteralPath $modelDestination -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $modelDestination | Out-Null
+Copy-Item -Path (Join-Path $modelSource '*') -Destination $modelDestination -Recurse -Force
 
 & "$env:SystemRoot\System32\icacls.exe" $programRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'KidOS could not secure its backend installation directory.' }
