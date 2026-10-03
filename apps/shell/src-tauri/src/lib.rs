@@ -93,6 +93,18 @@ struct ParentPolicySaveDto {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn get_parent_policy_command() -> Result<ParentPolicyConfig, String> {
+    guardian_ipc::get_parent_policy()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn get_parent_policy_command() -> Result<ParentPolicyConfig, String> {
+    Ok(ParentPolicyConfig::default())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn save_parent_policy(
     pin: String,
     policy: ParentPolicyConfig,
@@ -1002,6 +1014,7 @@ pub fn run() {
             parent_setup_status,
             configure_parent_pin,
             verify_parent_pin,
+            get_parent_policy_command,
             save_parent_policy,
             evaluate_navigation_with_parent_policy,
             evaluate_download_with_parent_policy,
