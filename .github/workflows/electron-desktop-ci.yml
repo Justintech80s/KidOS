@@ -1,4 +1,4 @@
-name: KidOS Desktop Electron CI
+name: KidOS Electron Full App CI
 
 on:
   pull_request:
@@ -6,6 +6,9 @@ on:
       - 'apps/desktop/**'
       - 'apps/shell/**'
       - 'packages/**'
+      - 'crates/**'
+      - 'services/media-classifier/**'
+      - 'scripts/windows/**'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/electron-desktop-ci.yml'
   push:
@@ -15,6 +18,9 @@ on:
       - 'apps/desktop/**'
       - 'apps/shell/**'
       - 'packages/**'
+      - 'crates/**'
+      - 'services/media-classifier/**'
+      - 'scripts/windows/**'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/electron-desktop-ci.yml'
   workflow_dispatch:
@@ -25,19 +31,39 @@ permissions:
 jobs:
   windows-electron-installer:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
       - name: Test Electron security boundary
         run: pnpm --filter @kidos/desktop test
-      - name: Build KidOS Desktop installer
+
+      - name: Test Guardian protocol and Rust workspace
+        run: |
+          cargo test -p guardian-service
+          cargo check -p kidos-guardian-host
+
+      - name: Package local AI media classifier
+        shell: pwsh
+        run: ./scripts/windows/package-media-classifier.ps1
+
+      - name: Build privileged Guardian service
+        run: cargo build -p kidos-guardian-host --release
+
+      - name: Build full KidOS Electron installer
         run: pnpm --filter @kidos/desktop build
+
       - name: Verify packaged shell uses file-relative assets
         shell: pwsh
         run: |
@@ -49,32 +75,42 @@ jobs:
             throw "Electron shell did not produce relative ./assets URLs."
           }
 
+      - name: Verify Guardian and classifier are bundled
+        shell: pwsh
+        run: |
+          $resources = "apps/desktop/dist-installer/win-unpacked/resources/backend"
+          if (-not (Test-Path "$resources/kidos-guardian-host.exe")) { throw "Guardian binary is missing from Electron package." }
+          if (-not (Test-Path "$resources/kidos-media-classifier-bundle.zip")) { throw "Classifier payload is missing from Electron package." }
+          if (-not (Test-Path "$resources/model/config.json")) { throw "Classifier model is missing from Electron package." }
+          if (-not (Test-Path "$resources/scripts/install-electron-backend.ps1")) { throw "Electron backend installer script is missing." }
+
       - name: Launch packaged Electron renderer smoke test
         shell: pwsh
         run: |
           $app = Get-ChildItem "apps/desktop/dist-installer/win-unpacked/*.exe" |
-            Where-Object { $_.Name -eq "KidOS Desktop.exe" } |
+            Where-Object { $_.Name -eq "KidOS.exe" } |
             Select-Object -First 1
-          if (-not $app) { throw "Packaged KidOS Desktop executable was not generated." }
+          if (-not $app) { throw "Packaged KidOS Electron executable was not generated." }
           $env:KIDOS_ELECTRON_SMOKE = "1"
           $process = Start-Process -FilePath $app.FullName -PassThru -Wait
           if ($process.ExitCode -ne 0) {
-            throw "KidOS Desktop renderer smoke test failed with exit code $($process.ExitCode)."
+            throw "KidOS Electron renderer smoke test failed with exit code $($process.ExitCode)."
           }
 
       - name: Verify installer exists
         shell: pwsh
         run: |
-          $installer = Get-ChildItem apps/desktop/dist-installer/KidOS-Desktop-Windows-x64-*-Setup.exe | Select-Object -First 1
-          if (-not $installer) { throw "KidOS Desktop installer was not generated." }
+          $installer = Get-ChildItem apps/desktop/dist-installer/KidOS-Windows-x64-*-Setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "Full KidOS Electron installer was not generated." }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content apps/desktop/dist-installer/KidOS-Desktop-SHA256SUMS.txt -Encoding ascii
+          "$hash  $($installer.Name)" | Set-Content apps/desktop/dist-installer/KidOS-SHA256SUMS.txt -Encoding ascii
           Write-Host "Built $($installer.Name)"
-      - name: Upload downloadable KidOS Desktop
+
+      - name: Upload downloadable full KidOS Electron app
         uses: actions/upload-artifact@v4
         with:
-          name: KidOS-Desktop-Windows-x64
+          name: KidOS-Windows-x64
           path: |
-            apps/desktop/dist-installer/KidOS-Desktop-Windows-x64-*-Setup.exe
-            apps/desktop/dist-installer/KidOS-Desktop-SHA256SUMS.txt
+            apps/desktop/dist-installer/KidOS-Windows-x64-*-Setup.exe
+            apps/desktop/dist-installer/KidOS-SHA256SUMS.txt
           if-no-files-found: error
