@@ -39,6 +39,7 @@ pub enum PrivilegedRequest {
     VerifyParentPin { pin: String },
     SaveParentPolicy { pin: String, policy: ParentPolicyConfig },
     GetParentPolicy,
+    EvaluateNavigation { url: String },
     EvaluateDownload {
         url: String,
         file_name: String,
@@ -62,7 +63,8 @@ pub enum PrivilegedRequest {
     },
     RecoveryStatus,
     RunRecovery { pin: String, action: String },
-    ApplyLockdown { profile: IpcLockdownProfile },
+    ListApprovedApps,
+    ApplyLockdown { pin: String, profile: IpcLockdownProfile },
     ParentUnlock { pin: String, duration_minutes: u64 },
     RemoveLockdown { pin: String },
 }
@@ -95,6 +97,7 @@ pub enum PrivilegedResponse {
     Status { state: String, reason: Option<String> },
     ParentVerification { authorized: bool, locked: bool },
     ParentPolicy { policy: ParentPolicyConfig },
+    ApprovedApps { apps: Vec<IpcApprovedApp> },
     PolicyDecision { decision: String },
     MediaClassification {
         decision: String,
