@@ -30,10 +30,15 @@ export default function LockdownSettings({
       setError('Windows Lockdown Mode requires a validated standard child account.');
       return;
     }
+    if (!parentPin.trim()) {
+      setError('Enter the parent PIN before applying Windows lockdown.');
+      return;
+    }
     const account = { id: accountName.trim(), displayName: accountName.trim(), role: accountRole } as const;
     const next = await api.configureWindowsLockdown({
       account,
       approvedApps: [{ id: 'kidos', displayName: 'KidOS', executablePath: 'KidOS.exe' }],
+      parentPin: parentPin.trim(),
     });
     setStatus(next);
     setMessage("Lockdown is prepared. Windows applies Assigned Access at the child's next sign-in.");
