@@ -322,6 +322,11 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('kidos-desktop:open-protected-browser', (_event, url) => openProtectedBrowser(url));
 
+  ipcMain.handle('kidos-desktop:parent-setup-status', async () => {
+    const response = await guardian('parent_setup_status');
+    if (response.type !== 'parent_setup') throw new Error('Guardian returned an unexpected parent setup response.');
+    return Boolean(response.configured);
+  });
   ipcMain.handle('kidos-desktop:configure-parent-pin', async (_event, pin, currentPin) => {
     const response = await guardian('configure_parent_pin', { new_pin: String(pin), current_pin: currentPin ? String(currentPin) : null });
     if (response.type !== 'ack') throw new Error('Guardian did not confirm parent PIN configuration.');
