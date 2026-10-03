@@ -821,6 +821,9 @@ fn handle_request(
             let (state, reason) = current_platform_state();
             PrivilegedResponse::Status { state, reason }
         }
+        PrivilegedRequest::ParentSetupStatus => PrivilegedResponse::ParentSetup {
+            configured: pin_is_initialized(),
+        },
         PrivilegedRequest::ConfigureParentPin { new_pin, current_pin } => {
             if !(4..=8).contains(&new_pin.len()) || !new_pin.chars().all(|ch| ch.is_ascii_digit()) {
                 return error_response("invalid_parent_pin", "Parent PIN must contain 4 through 8 digits.");
