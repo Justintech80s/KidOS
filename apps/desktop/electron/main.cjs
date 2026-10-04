@@ -223,14 +223,45 @@ async function askKidOSAi(query) {
   assertChildOnlineAccessAvailable();
   const text = String(query || '').trim();
   if (!text) throw new Error('Ask KidOS AI a question first.');
+  const policy = await getParentPolicy();
+  const instruction = `You are KidOS AI for a ${policy.childAge}-year-old. Answer age-appropriately and educationally. Do not provide unsafe, sexual, violent, self-harm, drug, weapon, evasion, or privacy-invasive instructions. Encourage a parent or teacher when appropriate.`;
+
+  const localEndpoint = process.env.KIDOS_LOCAL_AI_ENDPOINT;
+  if (localEndpoint) {
+    try {
+      const localResponse = await fetch(localEndpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: instruction },
+            { role: 'user', content: text.slice(0, 4000) },
+          ],
+          temperature: 0.4,
+          max_tokens: 700,
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (localResponse.ok) {
+        const data = await localResponse.json();
+        const answer = data?.choices?.[0]?.message?.content ?? data?.answer;
+        if (typeof answer === 'string' && answer.trim()) {
+          return { available: true, answer: answer.trim().slice(0, 12000), source: 'local' };
+        }
+      }
+    } catch {
+      // A configured local model may be offline; fall through to the protected cloud endpoint.
+    }
+  }
+
   const endpoint = process.env.KIDOS_AI_ENDPOINT;
   if (!endpoint) {
     return {
       available: false,
-      answer: 'KidOS AI is not connected to a production AI service on this computer yet. Learning, browsing, Guardian, and parent controls remain protected.',
+      answer: 'KidOS AI is not connected to a local or production AI service on this computer yet. Learning, browsing, Guardian, and parent controls remain protected.',
     };
   }
-  const policy = await getParentPolicy();
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -241,14 +272,14 @@ async function askKidOSAi(query) {
       query: text.slice(0, 4000),
       childAge: policy.childAge,
       safetyMode: 'child',
-      instruction: 'Answer age-appropriately. Do not provide unsafe, sexual, violent, self-harm, drug, weapon, evasion, or privacy-invasive instructions. Encourage a parent or teacher when appropriate.',
+      instruction,
     }),
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`KidOS AI service returned HTTP ${response.status}.`);
   const data = await response.json();
   if (!data || typeof data.answer !== 'string' || !data.answer.trim()) throw new Error('KidOS AI returned an invalid response.');
-  return { available: true, answer: data.answer.trim().slice(0, 12000) };
+  return { available: true, answer: data.answer.trim().slice(0, 12000), source: 'cloud' };
 }
 
 function loadWellbeing() {
