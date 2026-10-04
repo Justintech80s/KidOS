@@ -5,6 +5,9 @@ on:
     paths:
       - 'apps/shell/**'
       - 'crates/guardian-service/**'
+      - 'crates/guardian-host/**'
+      - 'crates/secure-store/**'
+      - 'crates/policy-core/**'
       - 'packages/contracts/**'
       - 'tests/security/lockdown-source-safety.test.mjs'
       - '.github/workflows/windows-lockdown-ci.yml'
