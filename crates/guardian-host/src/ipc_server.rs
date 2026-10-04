@@ -61,6 +61,8 @@ const PARENT_PIN_KEY: &str = "parent-pin";
 #[cfg(target_os = "windows")]
 const PARENT_POLICY_DIGEST_KEY: &str = "parent-policy-digest";
 #[cfg(target_os = "windows")]
+const POLICY_INTEGRITY_MARKER: &str = "policy-integrity-v1.enabled";
+#[cfg(target_os = "windows")]
 const PIPE_ACCESS_DUPLEX_VALUE: u32 = 0x0000_0003;
 
 #[cfg(target_os = "windows")]
@@ -123,6 +125,19 @@ fn policy_path() -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "windows")]
+fn policy_integrity_marker_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join(POLICY_INTEGRITY_MARKER))
+}
+
+#[cfg(target_os = "windows")]
+fn mark_policy_integrity_enabled() -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
+    fs::write(policy_integrity_marker_path()?, b"1")
+        .map_err(|_| "Guardian could not record policy integrity initialization.".to_string())
+}
+
+#[cfg(target_os = "windows")]
 fn pin_is_initialized() -> bool {
     pin_marker_path().map(|path| path.exists()).unwrap_or(false)
 }
@@ -150,11 +165,18 @@ fn load_parent_policy(integrity_store: &WindowsSecretStore) -> ParentPolicyConfi
     match integrity_store.verify_secret(PARENT_POLICY_DIGEST_KEY, &digest) {
         Ok(true) => {}
         Ok(false) => {
+            let integrity_already_enabled = policy_integrity_marker_path()
+                .map(|marker| marker.exists())
+                .unwrap_or(true);
             let legacy_policy = serde_json::from_slice::<ParentPolicyConfig>(&contents);
-            if let Ok(policy) = legacy_policy {
-                // First upgrade from older KidOS: bind the existing valid policy to secure storage.
-                if integrity_store.put_secret(PARENT_POLICY_DIGEST_KEY, &digest).is_ok() {
-                    return policy;
+            if !integrity_already_enabled {
+                if let Ok(policy) = legacy_policy {
+                    // One-time migration from a pre-integrity KidOS install.
+                    if integrity_store.put_secret(PARENT_POLICY_DIGEST_KEY, &digest).is_ok()
+                        && mark_policy_integrity_enabled().is_ok()
+                    {
+                        return policy;
+                    }
                 }
             }
             let tampered = path.with_extension(format!("tampered-{}.json", now_seconds()));
@@ -193,6 +215,7 @@ fn persist_parent_policy(policy: &ParentPolicyConfig, integrity_store: &WindowsS
     integrity_store
         .put_secret(PARENT_POLICY_DIGEST_KEY, &digest)
         .map_err(|_| "Guardian could not bind parent policy integrity to secure storage.".to_string())?;
+    mark_policy_integrity_enabled()?;
     Ok(())
 }
 
