@@ -55,6 +55,7 @@ export default function KidOSParentWorkspace({ api, onClose }: { api: KidOSApi; 
             initialPolicy={policy}
             initialLockdownStatus={lockdown}
             lockdownApi={api}
+            wellbeingApi={api}
           />
         </div>
       </section>
