@@ -26,6 +26,8 @@ use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, 
 #[cfg(target_os = "windows")]
 use base64::Engine;
 #[cfg(target_os = "windows")]
+use sha2::{Digest, Sha256};
+#[cfg(target_os = "windows")]
 use policy_core::{
     evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
     evaluate_navigation as evaluate_navigation_policy,
@@ -56,6 +58,8 @@ fn wide(value: &str) -> Vec<u16> {
 
 #[cfg(target_os = "windows")]
 const PARENT_PIN_KEY: &str = "parent-pin";
+#[cfg(target_os = "windows")]
+const PARENT_POLICY_DIGEST_KEY: &str = "parent-policy-digest";
 #[cfg(target_os = "windows")]
 const PIPE_ACCESS_DUPLEX_VALUE: u32 = 0x0000_0003;
 
@@ -131,25 +135,52 @@ fn mark_pin_initialized() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn load_parent_policy() -> ParentPolicyConfig {
+fn policy_digest(contents: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(contents);
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(target_os = "windows")]
+fn load_parent_policy(integrity_store: &WindowsSecretStore) -> ParentPolicyConfig {
     let Ok(path) = policy_path() else { return ParentPolicyConfig::default(); };
-    let Ok(contents) = fs::read_to_string(&path) else { return ParentPolicyConfig::default(); };
-    match serde_json::from_str(&contents) {
+    let Ok(contents) = fs::read(&path) else { return ParentPolicyConfig::default(); };
+    let digest = policy_digest(&contents);
+
+    match integrity_store.verify_secret(PARENT_POLICY_DIGEST_KEY, &digest) {
+        Ok(true) => {}
+        Ok(false) => {
+            let legacy_policy = serde_json::from_slice::<ParentPolicyConfig>(&contents);
+            if let Ok(policy) = legacy_policy {
+                // First upgrade from older KidOS: bind the existing valid policy to secure storage.
+                if integrity_store.put_secret(PARENT_POLICY_DIGEST_KEY, &digest).is_ok() {
+                    return policy;
+                }
+            }
+            let tampered = path.with_extension(format!("tampered-{}.json", now_seconds()));
+            let _ = fs::rename(&path, tampered);
+            mark_recovery_required("parent-policy-integrity-failed");
+            return ParentPolicyConfig::default();
+        }
+        Err(_) => {
+            mark_recovery_required("parent-policy-integrity-unavailable");
+            return ParentPolicyConfig::default();
+        }
+    }
+
+    match serde_json::from_slice(&contents) {
         Ok(policy) => policy,
         Err(_) => {
             let corrupt = path.with_extension(format!("corrupt-{}.json", now_seconds()));
             let _ = fs::rename(&path, corrupt);
-            let _ = fs::write(
-                guardian_data_dir().unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian")).join("recovery-required.flag"),
-                b"parent-policy-corrupt",
-            );
+            mark_recovery_required("parent-policy-corrupt");
             ParentPolicyConfig::default()
         }
     }
 }
 
 #[cfg(target_os = "windows")]
-fn persist_parent_policy(policy: &ParentPolicyConfig) -> Result<(), String> {
+fn persist_parent_policy(policy: &ParentPolicyConfig, integrity_store: &WindowsSecretStore) -> Result<(), String> {
     let dir = guardian_data_dir()?;
     fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
     let path = policy_path()?;
@@ -158,6 +189,10 @@ fn persist_parent_policy(policy: &ParentPolicyConfig) -> Result<(), String> {
         .map_err(|_| "Guardian could not encode parent policy.".to_string())?;
     fs::write(&temp, encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
     fs::rename(&temp, &path).map_err(|_| "Guardian could not finalize parent policy.".to_string())?;
+    let digest = policy_digest(&encoded);
+    integrity_store
+        .put_secret(PARENT_POLICY_DIGEST_KEY, &digest)
+        .map_err(|_| "Guardian could not bind parent policy integrity to secure storage.".to_string())?;
     Ok(())
 }
 
@@ -238,12 +273,13 @@ fn recovery_reason() -> Option<String> {
 #[cfg(target_os = "windows")]
 fn reset_parent_policy_to_defaults(
     parent_policy: &mut GuardianPolicyStore,
+    integrity_store: &WindowsSecretStore,
 ) -> Result<(), String> {
     let policy = ParentPolicyConfig::default();
     parent_policy
         .replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone())
         .map_err(|error| error.to_string())?;
-    persist_parent_policy(&policy)?;
+    persist_parent_policy(&policy, integrity_store)?;
     clear_recovery_marker();
     Ok(())
 }
@@ -886,7 +922,7 @@ fn handle_request(
             if let Err(error) = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone()) {
                 return error_response("invalid_parent_policy", error.to_string());
             }
-            if let Err(error) = persist_parent_policy(&policy) {
+            if let Err(error) = persist_parent_policy(&policy, &policy_integrity_store) {
                 return error_response("parent_policy_store_failed", error);
             }
             PrivilegedResponse::Ack { message: "Parent safety policy saved by Guardian.".into() }
@@ -1099,7 +1135,7 @@ fn handle_request(
             }
 
             match action.as_str() {
-                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy) {
+                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy, &policy_integrity_store) {
                     Ok(()) => PrivilegedResponse::Ack { message: "KidOS parent policy was reset to safe defaults.".into() },
                     Err(message) => error_response("recovery_policy_reset_failed", message),
                 },
@@ -1251,7 +1287,8 @@ pub fn run_pipe_server() {
     let mut parent_authorization =
         ParentAuthorization::new(WindowsSecretStore::new("KidOSGuardian"), PARENT_PIN_KEY);
     let mut parent_policy = GuardianPolicyStore::default();
-    let persisted_policy = load_parent_policy();
+    let policy_integrity_store = WindowsSecretStore::new("KidOSGuardian");
+    let persisted_policy = load_parent_policy(&policy_integrity_store);
     let _ = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, persisted_policy);
 
     loop {
