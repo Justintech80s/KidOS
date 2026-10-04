@@ -5,6 +5,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { randomUUID } = require('node:crypto');
 
 const SCHEMA_VERSION = 1;
+const PROJECT_QUOTA_BYTES = 20 * 1024 * 1024;
 const DEFAULT_WELLBEING = Object.freeze({
   dailyMinutes: 120,
   breakEveryMinutes: 30,
@@ -151,6 +152,15 @@ function openKidOSDataStore(userDataDir) {
                     FROM workspace_documents WHERE id=?`).get(String(input.id))
       : null;
     const document = normalizeWorkspaceDocument(input, existing);
+    const otherUsage = Number(db.prepare(`SELECT COALESCE(SUM(
+      length(CAST(title AS BLOB)) + length(CAST(prompt AS BLOB)) + length(CAST(content AS BLOB))
+    ),0) AS used FROM workspace_documents WHERE id<>?`).get(document.id)?.used || 0);
+    const incomingBytes = Buffer.byteLength(document.title, 'utf8')
+      + Buffer.byteLength(document.prompt, 'utf8')
+      + Buffer.byteLength(document.content, 'utf8');
+    if (otherUsage + incomingBytes > PROJECT_QUOTA_BYTES) {
+      throw new Error('KidOS project storage quota reached. A parent can back up or remove older projects.');
+    }
     db.prepare(`INSERT INTO workspace_documents(id,kind,title,prompt,content,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
