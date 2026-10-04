@@ -64,7 +64,9 @@ test('usage accounting drives remaining time and daily-limit enforcement state',
     reducedMotion: false,
   }, true);
 
-  store.addUsageSeconds(14 * 60);
+  for (let minute = 0; minute < 14; minute += 1) {
+    store.addUsageSeconds(60);
+  }
   let status = store.getUsageStatus(new Date('2026-10-04T12:00:00'));
   assert.equal(status.usedMinutes, 14);
   assert.equal(status.dailyLimitReached, false);
