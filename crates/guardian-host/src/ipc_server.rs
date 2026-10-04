@@ -255,13 +255,17 @@ fn classifier_healthy() -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn policy_file_valid() -> bool {
+fn policy_file_valid(integrity_store: &WindowsSecretStore) -> bool {
     let Ok(path) = policy_path() else { return false; };
     if !path.exists() {
         return true;
     }
-    let Ok(contents) = fs::read_to_string(path) else { return false; };
-    serde_json::from_str::<ParentPolicyConfig>(&contents).is_ok()
+    let Ok(contents) = fs::read(&path) else { return false; };
+    if serde_json::from_slice::<ParentPolicyConfig>(&contents).is_err() {
+        return false;
+    }
+    let digest = policy_digest(&contents);
+    integrity_store.verify_secret(PARENT_POLICY_DIGEST_KEY, &digest).unwrap_or(false)
 }
 
 #[cfg(target_os = "windows")]
@@ -1123,7 +1127,7 @@ fn handle_request(
                 classifier_healthy: classifier_healthy(),
                 recovery_required: marker_reason.is_some(),
                 recovery_reason: marker_reason,
-                policy_valid: policy_file_valid(),
+                policy_valid: policy_file_valid(policy_integrity_store),
                 lockdown_state,
             }
         }
@@ -1148,7 +1152,7 @@ fn handle_request(
                     Err(error) => error_response("recovery_remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
                 },
                 "clear_recovery_marker" => {
-                    if !policy_file_valid() {
+                    if !policy_file_valid(policy_integrity_store) {
                         return error_response("recovery_still_required", "Parent policy is still invalid.");
                     }
                     let (state, reason) = current_platform_state();
