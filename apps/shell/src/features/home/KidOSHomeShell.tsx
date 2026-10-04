@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ApprovedAppSummary, KidOSApi, WellbeingSettings } from '../../lib/kidos-api';
+import type { WorkspacePlan } from '@kidos/contracts';
+import type { ApprovedAppSummary, KidOSApi, WellbeingSettings, WorkspaceDocument } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 import KidOSAiScreen from './KidOSAiScreen';
 import KidOSCreateScreen from './KidOSCreateScreen';
@@ -25,6 +26,25 @@ const DEFAULT_WELLBEING: WellbeingSettings = {
   reducedMotion: false,
 };
 
+function starterContent(plan: WorkspacePlan, prompt: string) {
+  if (plan.kind === 'beginner_coding') {
+    return `# ${prompt}\n\n# Goal\nDescribe what your project should do.\n\n# Steps\n1. Start with one small idea.\n2. Write or change one part at a time.\n3. Test what you made.\n\n# My code / pseudocode\n`;
+  }
+  if (plan.kind === 'drawing_presentation') {
+    return `Project: ${prompt}\n\nSection 1 — Main idea\n\nSection 2 — Important facts or visuals\n\nSection 3 — What I want people to remember\n`;
+  }
+  return `Title: ${prompt}\n\nBeginning\n\nMiddle\n\nEnding\n`;
+}
+
+function workspacePlanForDocument(project: WorkspaceDocument): WorkspacePlan {
+  const capability = project.kind === 'story' ? 'story' : project.kind;
+  return {
+    kind: project.kind,
+    title: project.kind === 'story' ? 'Story Workspace' : project.kind === 'drawing_presentation' ? 'Drawing & Presentation Workspace' : 'Beginner Coding Workspace',
+    capabilities: [capability, 'export_project'],
+  };
+}
+
 export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: KidOSApi; onOpenParentWorkspace(): void }) {
   const [active, setActive] = useState<KidOSDestination>('home');
   const [status, setStatus] = useState<KidOSSystemStatus>(OFFLINE_KIDOS_STATUS);
@@ -32,6 +52,14 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [searchStatus, setSearchStatus] = useState('');
   const [createValue, setCreateValue] = useState('');
   const [workspaceStatus, setWorkspaceStatus] = useState('');
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspacePlan>();
+  const [projectId, setProjectId] = useState<string>();
+  const [projectTitle, setProjectTitle] = useState('');
+  const [projectContent, setProjectContent] = useState('');
+  const [savedProjects, setSavedProjects] = useState<WorkspaceDocument[]>([]);
+  const [learnStatus, setLearnStatus] = useState('Choose a learning subject.');
+  const [playStatus, setPlayStatus] = useState('Choose a protected game category.');
+  const [watchStatus, setWatchStatus] = useState('Choose a protected video category.');
   const [aiValue, setAiValue] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
@@ -103,6 +131,15 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       } else if (active) {
         setWellbeingStatus('Wellbeing settings are local to the Electron build.');
       }
+
+      if (api.listWorkspaceDocuments) {
+        try {
+          const projects = await api.listWorkspaceDocuments();
+          if (active) setSavedProjects(projects);
+        } catch {
+          if (active) setWorkspaceStatus('Saved KidOS projects could not be loaded.');
+        }
+      }
     }
     void loadChildServices();
     return () => { active = false; };
@@ -152,6 +189,31 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     }
   }
 
+  async function openProtectedModuleResource(
+    label: string,
+    url: string,
+    setMessage: (message: string) => void,
+  ) {
+    setMessage(`Checking ${label} with KidOS Guardian...`);
+    try {
+      const result = await prepareProtectedNavigation(url, api.evaluateNavigation);
+      if (result.state === 'load') {
+        if (!api.openProtectedBrowser) {
+          setMessage(`${label} stayed closed because KidOS Safe Browser is unavailable.`);
+          return;
+        }
+        await api.openProtectedBrowser(result.url);
+        setMessage(`${label} opened through KidOS Safe Browser.`);
+      } else if (result.state === 'parent_gate') {
+        setMessage(`${label} needs parent approval.`);
+      } else {
+        setMessage(`${label} was blocked by KidOS safety policy.`);
+      }
+    } catch {
+      setMessage(`${label} stayed closed because protected browsing is unavailable.`);
+    }
+  }
+
   async function runSafeSearch(query: string) {
     setActive('browser');
     setSearchValue(query);
@@ -194,10 +256,47 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     setWorkspaceStatus('Preparing a safe workspace...');
     try {
       const plan = await api.planWorkspace(value);
+      setActiveWorkspace(plan);
+      setProjectId(undefined);
+      setProjectTitle(value.slice(0, 80));
+      setProjectContent(starterContent(plan, value));
       setWorkspaceStatus(`Safe workspace ready: ${plan.title}`);
     } catch {
       setWorkspaceStatus('KidOS could not prepare the workspace safely.');
     }
+  }
+
+  async function saveProject() {
+    if (!activeWorkspace || !api.saveWorkspaceDocument) {
+      setWorkspaceStatus('Project saving is available in the installed KidOS Electron build.');
+      return;
+    }
+    setWorkspaceStatus('Saving project locally...');
+    try {
+      const saved = await api.saveWorkspaceDocument({
+        id: projectId,
+        kind: activeWorkspace.kind,
+        title: projectTitle.trim() || 'Untitled KidOS Project',
+        prompt: createValue,
+        content: projectContent,
+      });
+      setProjectId(saved.id);
+      setProjectTitle(saved.title);
+      setSavedProjects((current) => [saved, ...current.filter((project) => project.id !== saved.id)].slice(0, 50));
+      setWorkspaceStatus('Project saved safely on this computer.');
+    } catch {
+      setWorkspaceStatus('KidOS could not save this project.');
+    }
+  }
+
+  function openSavedProject(project: WorkspaceDocument) {
+    setActive('create');
+    setActiveWorkspace(workspacePlanForDocument(project));
+    setProjectId(project.id);
+    setProjectTitle(project.title);
+    setProjectContent(project.content);
+    setCreateValue(project.prompt);
+    setWorkspaceStatus('Saved project reopened.');
   }
 
   async function answerAi(query: string) {
@@ -242,11 +341,11 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       case 'home':
         return <KidOSHomeScreen status={status} onNavigate={setActive} />;
       case 'learn':
-        return <KidOSLearnScreen />;
+        return <KidOSLearnScreen statusMessage={learnStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setLearnStatus); }} />;
       case 'play':
-        return <KidOSPlayScreen />;
+        return <KidOSPlayScreen statusMessage={playStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setPlayStatus); }} />;
       case 'watch':
-        return <KidOSWatchScreen />;
+        return <KidOSWatchScreen statusMessage={watchStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setWatchStatus); }} />;
       case 'wellbeing':
         return <KidOSWellbeingScreen settings={wellbeing} statusMessage={wellbeingStatus} onChange={setWellbeing} onSave={() => { void saveWellbeing(); }} />;
       case 'apps':
@@ -267,9 +366,18 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
           <KidOSCreateScreen
             value={createValue}
             statusMessage={workspaceStatus}
+            workspace={activeWorkspace}
+            projectId={projectId}
+            projectTitle={projectTitle}
+            projectContent={projectContent}
+            savedProjects={savedProjects}
             onValueChange={setCreateValue}
             onSubmit={() => { void createWorkspace(); }}
             onPrompt={(prompt) => { void createWorkspace(prompt); }}
+            onProjectTitleChange={setProjectTitle}
+            onProjectContentChange={setProjectContent}
+            onSaveProject={() => { void saveProject(); }}
+            onOpenProject={openSavedProject}
           />
         );
       case 'ai':
