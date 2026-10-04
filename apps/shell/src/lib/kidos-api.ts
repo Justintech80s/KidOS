@@ -69,6 +69,17 @@ export interface WellbeingSettings {
   reducedMotion: boolean;
 }
 
+export interface UsageStatus {
+  day: string;
+  usedMinutes: number;
+  usedSeconds: number;
+  dailyLimitMinutes: number;
+  remainingMinutes: number;
+  dailyLimitReached: boolean;
+  breakDue: boolean;
+  windDownActive: boolean;
+}
+
 export interface WorkspaceDocument {
   id?: string;
   kind: WorkspacePlan['kind'];
@@ -83,6 +94,8 @@ export interface KidOSApi {
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
   listWorkspaceDocuments?(): Promise<WorkspaceDocument[]>;
   saveWorkspaceDocument?(document: WorkspaceDocument): Promise<WorkspaceDocument>;
+  createDataBackup?(): Promise<string | null>;
+  getUsageStatus?(): Promise<UsageStatus>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   openProtectedBrowser?(url: string): Promise<void>;
@@ -106,6 +119,7 @@ export interface KidOSApi {
   askAi?(query: string): Promise<KidOSAiResponse>;
   getWellbeing?(): Promise<WellbeingSettings>;
   saveWellbeing?(settings: WellbeingSettings): Promise<WellbeingSettings>;
+  saveParentWellbeing?(pin: string, settings: WellbeingSettings): Promise<WellbeingSettings>;
 }
 
 export const tauriKidOSApi: KidOSApi = {
@@ -136,6 +150,8 @@ type DesktopBridge = {
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
   listWorkspaceDocuments(): Promise<WorkspaceDocument[]>;
   saveWorkspaceDocument(document: WorkspaceDocument): Promise<WorkspaceDocument>;
+  createDataBackup(): Promise<string | null>;
+  usageStatus(): Promise<UsageStatus>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   openProtectedBrowser(url: string): Promise<void>;
@@ -157,6 +173,7 @@ type DesktopBridge = {
   askAi(query: string): Promise<KidOSAiResponse>;
   getWellbeing(): Promise<WellbeingSettings>;
   saveWellbeing(settings: WellbeingSettings): Promise<WellbeingSettings>;
+  saveParentWellbeing(pin: string, settings: WellbeingSettings): Promise<WellbeingSettings>;
 };
 
 function desktopBridge(): DesktopBridge | undefined {
@@ -172,6 +189,8 @@ export const electronKidOSApi: KidOSApi = {
   planWorkspace(prompt) { return desktopBridge()!.planWorkspace(prompt); },
   listWorkspaceDocuments() { return desktopBridge()!.listWorkspaceDocuments(); },
   saveWorkspaceDocument(document) { return desktopBridge()!.saveWorkspaceDocument(document); },
+  createDataBackup() { return desktopBridge()!.createDataBackup(); },
+  getUsageStatus() { return desktopBridge()!.usageStatus(); },
   evaluateNavigation(url) { return desktopBridge()!.evaluateNavigation(url); },
   evaluateDownload(fileName, mimeType) { return desktopBridge()!.evaluateDownload(fileName, mimeType); },
   openProtectedBrowser(url) { return desktopBridge()!.openProtectedBrowser(url); },
@@ -195,6 +214,7 @@ export const electronKidOSApi: KidOSApi = {
   askAi(query) { return desktopBridge()!.askAi(query); },
   getWellbeing() { return desktopBridge()!.getWellbeing(); },
   saveWellbeing(settings) { return desktopBridge()!.saveWellbeing(settings); },
+  saveParentWellbeing(pin, settings) { return desktopBridge()!.saveParentWellbeing(pin, settings); },
 };
 
 export function runtimeKidOSApi(): KidOSApi {
