@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const path = require('node:path');
 const { requestGuardian } = require('./guardian-client.cjs');
 const { openKidOSDataStore } = require('./data-store.cjs');
+const { createKidOSUpdater } = require('./updater.cjs');
 
 const isDev = Boolean(process.env.KIDOS_DESKTOP_DEV_URL);
 const isSmokeTest = process.env.KIDOS_ELECTRON_SMOKE === '1';
@@ -66,11 +67,19 @@ function saveWorkspacePlan(prompt) {
 }
 
 let kidOSDataStore = null;
+let kidOSUpdater = null;
 let usageTimer = null;
 
 function dataStore() {
   if (!kidOSDataStore) throw new Error('KidOS data store is not ready.');
   return kidOSDataStore;
+}
+
+async function requireParentPin(pin) {
+  const response = await guardian('verify_parent_pin', { pin: String(pin) });
+  if (response.type !== 'parent_verification' || !response.authorized) {
+    throw new Error(response.locked ? 'Parent PIN is temporarily locked.' : 'Parent PIN was not accepted.');
+  }
 }
 
 function childAccessStatus() {
@@ -251,10 +260,7 @@ function saveWellbeing(value) {
 }
 
 async function saveParentWellbeing(pin, value) {
-  const response = await guardian('verify_parent_pin', { pin: String(pin) });
-  if (response.type !== 'parent_verification' || !response.authorized) {
-    throw new Error(response.locked ? 'Parent PIN is temporarily locked.' : 'Parent PIN was not accepted.');
-  }
+  await requireParentPin(pin);
   dataStore().createBackup('parent-settings');
   return dataStore().saveWellbeing(value, true);
 }
@@ -321,6 +327,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   kidOSDataStore = openKidOSDataStore(app.getPath('userData'));
   await kidOSDataStore.migrateLegacyFiles();
+  kidOSUpdater = createKidOSUpdater();
   startUsageTracking();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
@@ -463,6 +470,23 @@ app.whenReady().then(async () => {
   ipcMain.handle('kidos-desktop:save-wellbeing', (_event, value) => saveWellbeing(value));
   ipcMain.handle('kidos-desktop:save-parent-wellbeing', (_event, pin, value) => saveParentWellbeing(pin, value));
 
+  ipcMain.handle('kidos-desktop:update-status', () => kidOSUpdater?.getState() ?? { status: 'unavailable' });
+  ipcMain.handle('kidos-desktop:check-updates', async () => {
+    if (!kidOSUpdater) throw new Error('KidOS updater is unavailable.');
+    return kidOSUpdater.check();
+  });
+  ipcMain.handle('kidos-desktop:download-update', async (_event, pin) => {
+    await requireParentPin(pin);
+    if (!kidOSUpdater) throw new Error('KidOS updater is unavailable.');
+    return kidOSUpdater.download();
+  });
+  ipcMain.handle('kidos-desktop:install-update', async (_event, pin) => {
+    await requireParentPin(pin);
+    if (!kidOSUpdater) throw new Error('KidOS updater is unavailable.');
+    kidOSUpdater.install();
+    return true;
+  });
+
   ipcMain.handle('kidos-desktop:open-approved-resource', async (_event, resource) => {
     const url = APPROVED_ONLINE_RESOURCES[resource];
     if (!url) return false;
@@ -471,6 +495,12 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  if (app.isPackaged && kidOSUpdater) {
+    const updateTimer = setTimeout(() => {
+      void kidOSUpdater.check().catch(() => {});
+    }, 15000);
+    updateTimer.unref?.();
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
