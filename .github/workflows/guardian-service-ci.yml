@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'crates/guardian-service/**'
+      - 'crates/guardian-host/**'
+      - 'crates/secure-store/**'
       - 'crates/policy-core/**'
       - 'Cargo.toml'
       - '.github/workflows/guardian-service-ci.yml'
@@ -16,3 +18,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Test Guardian Service
         run: cargo test -p guardian-service
+      - name: Check Guardian Host integration
+        run: cargo check -p kidos-guardian-host
