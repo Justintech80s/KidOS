@@ -187,7 +187,7 @@ fn persist_parent_policy(policy: &ParentPolicyConfig, integrity_store: &WindowsS
     let temp = path.with_extension("json.tmp");
     let encoded = serde_json::to_vec_pretty(policy)
         .map_err(|_| "Guardian could not encode parent policy.".to_string())?;
-    fs::write(&temp, encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
+    fs::write(&temp, &encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
     fs::rename(&temp, &path).map_err(|_| "Guardian could not finalize parent policy.".to_string())?;
     let digest = policy_digest(&encoded);
     integrity_store
@@ -860,6 +860,7 @@ fn handle_request(
     lockdown_service: &mut PlatformLockdownService<ProductionWindowsPlatformAdapter>,
     parent_authorization: &mut ParentAuthorization<WindowsSecretStore>,
     parent_policy: &mut GuardianPolicyStore,
+    policy_integrity_store: &WindowsSecretStore,
 ) -> PrivilegedResponse {
     let envelope = match decode_privileged_request(bytes) {
         Ok(envelope) => envelope,
@@ -1330,6 +1331,7 @@ pub fn run_pipe_server() {
                 &mut lockdown_service,
                 &mut parent_authorization,
                 &mut parent_policy,
+                &policy_integrity_store,
             )
         } else {
             error_response("read_failed", "Guardian could not read the privileged request.")
