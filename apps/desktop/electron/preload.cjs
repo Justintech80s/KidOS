@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('kidosDesktop', Object.freeze({
   planWorkspace: (prompt) => ipcRenderer.invoke('kidos-desktop:plan-workspace', prompt),
   listWorkspaceDocuments: () => ipcRenderer.invoke('kidos-desktop:list-workspace-documents'),
   saveWorkspaceDocument: (document) => ipcRenderer.invoke('kidos-desktop:save-workspace-document', document),
+  createDataBackup: () => ipcRenderer.invoke('kidos-desktop:create-data-backup'),
+  usageStatus: () => ipcRenderer.invoke('kidos-desktop:usage-status'),
   evaluateNavigation: (url) => ipcRenderer.invoke('kidos-desktop:evaluate-navigation', url),
   evaluateDownload: (fileName, mimeType) => ipcRenderer.invoke('kidos-desktop:evaluate-download', fileName, mimeType),
   openProtectedBrowser: (url) => ipcRenderer.invoke('kidos-desktop:open-protected-browser', url),
@@ -34,6 +36,7 @@ contextBridge.exposeInMainWorld('kidosDesktop', Object.freeze({
   askAi: (query) => ipcRenderer.invoke('kidos-desktop:ask-ai', query),
   getWellbeing: () => ipcRenderer.invoke('kidos-desktop:get-wellbeing'),
   saveWellbeing: (value) => ipcRenderer.invoke('kidos-desktop:save-wellbeing', value),
+  saveParentWellbeing: (pin, value) => ipcRenderer.invoke('kidos-desktop:save-parent-wellbeing', pin, value),
 
   openApprovedResource: (resource) => ipcRenderer.invoke('kidos-desktop:open-approved-resource', resource),
 }));
