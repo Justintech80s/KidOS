@@ -7,6 +7,8 @@ const root = path.join(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'electron', 'main.cjs'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'electron', 'preload.cjs'), 'utf8');
 const guardianClient = fs.readFileSync(path.join(root, 'electron', 'guardian-client.cjs'), 'utf8');
+const dataStore = fs.readFileSync(path.join(root, 'electron', 'data-store.cjs'), 'utf8');
+const updater = fs.readFileSync(path.join(root, 'electron', 'updater.cjs'), 'utf8');
 const installer = fs.readFileSync(path.join(root, 'build', 'installer.nsh'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const viteConfig = fs.readFileSync(path.join(root, '..', 'shell', 'vite.config.ts'), 'utf8');
@@ -89,4 +91,34 @@ test('approved app launch resolves the path from Guardian, not renderer input', 
   assert.match(main, /launch-approved-app/);
   assert.match(main, /selected\.executable_path/);
   assert.doesNotMatch(preload, /executablePath/);
+});
+
+
+test('KidOS uses transactional SQLite storage with backups and local usage accounting', () => {
+  assert.match(dataStore, /node:sqlite/);
+  assert.match(dataStore, /journal_mode=WAL/);
+  assert.match(dataStore, /VACUUM INTO/);
+  assert.match(dataStore, /usage_daily/);
+  assert.match(main, /addUsageSeconds\(60\)/);
+  assert.match(main, /dailyLimitReached/);
+  assert.match(main, /windDownActive/);
+});
+
+test('child wellbeing cannot alter parent-controlled time limits', () => {
+  assert.match(main, /saveWellbeing\(value, false\)/);
+  assert.match(main, /saveWellbeing\(value, true\)/);
+  assert.match(main, /save-parent-wellbeing/);
+  assert.match(preload, /saveParentWellbeing/);
+});
+
+test('KidOS updater is parent gated and release metadata capable', () => {
+  assert.equal(typeof pkg.dependencies['electron-updater'], 'string');
+  assert.equal(pkg.build.publish[0].provider, 'github');
+  assert.match(updater, /autoDownload = false/);
+  assert.match(updater, /autoInstallOnAppQuit = false/);
+  assert.match(main, /download-update/);
+  assert.match(main, /install-update/);
+  assert.match(main, /requireParentPin\(pin\)/);
+  assert.match(preload, /downloadUpdate/);
+  assert.match(preload, /installUpdate/);
 });
