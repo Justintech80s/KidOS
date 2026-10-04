@@ -55,6 +55,56 @@ describe('KidOSHomeShell', () => {
     expect(screen.getByTestId(testId)).toBeTruthy();
   });
 
+  it.each([
+    ['Learn', 'Math', 'khanacademy.org/math'],
+    ['Play', 'Puzzles', 'pbskids.org/games'],
+    ['Watch', 'Science', 'kids.youtube.com/search'],
+  ])('routes %s category actions through the protected browser', async (destination, action, expectedUrl) => {
+    const opened: string[] = [];
+    const allowApi: KidOSApi = {
+      ...api,
+      async evaluateNavigation() { return 'allow'; },
+      async openProtectedBrowser(url) { opened.push(url); },
+    };
+    render(<KidOSHomeShell api={allowApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination(destination);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(action) }));
+    expect(await screen.findByText(new RegExp(`${action} opened through KidOS Safe Browser`))).toBeTruthy();
+    expect(opened.some((url) => url.includes(expectedUrl))).toBe(true);
+  });
+
+  it('saves an editable Create project through the Electron project API contract', async () => {
+    let savedContent = '';
+    const createApi: KidOSApi = {
+      ...api,
+      async listWorkspaceDocuments() { return []; },
+      async saveWorkspaceDocument(document) {
+        savedContent = document.content;
+        return {
+          ...document,
+          id: 'project-1',
+          createdAt: '2026-10-04T12:00:00Z',
+          updatedAt: '2026-10-04T12:00:00Z',
+        };
+      },
+    };
+
+    render(<KidOSHomeShell api={createApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const prompt = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(prompt, { target: { value: 'Write a moon story' } });
+    fireEvent.submit(prompt.closest('form')!);
+
+    expect(await screen.findByTestId('kidos-workspace-editor')).toBeTruthy();
+    const content = screen.getByLabelText('Project content');
+    fireEvent.change(content, { target: { value: 'Once upon a time on the Moon.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save project' }));
+
+    expect(await screen.findByText('Project saved safely on this computer.')).toBeTruthy();
+    expect(savedContent).toBe('Once upon a time on the Moon.');
+    expect(screen.getByText('Saved project')).toBeTruthy();
+  });
+
   it('creates a protected workspace through the existing planner API', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('Create');
