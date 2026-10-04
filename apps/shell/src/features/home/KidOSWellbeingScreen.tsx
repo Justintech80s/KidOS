@@ -1,39 +1,50 @@
-import type { WellbeingSettings } from '../../lib/kidos-api';
+import type { UsageStatus, WellbeingSettings } from '../../lib/kidos-api';
 
 export default function KidOSWellbeingScreen({
   settings,
+  usage,
   statusMessage,
   onChange,
   onSave,
 }: {
   settings: WellbeingSettings;
+  usage?: UsageStatus;
   statusMessage: string;
   onChange(next: WellbeingSettings): void;
   onSave(): void;
 }) {
+  const used = usage?.usedMinutes ?? 0;
+  const limit = usage?.dailyLimitMinutes ?? settings.dailyMinutes;
+  const percent = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
+
   return (
     <section className="kidos-screen kidos-category-screen" data-testid="kidos-wellbeing-screen">
       <header className="kidos-screen-header">
         <span className="kidos-screen-icon" aria-hidden="true">☀️</span>
-        <div><p className="eyebrow">Healthy habits</p><h1>Wellbeing</h1><p>KidOS stores these comfort and screen-balance settings on this device.</p></div>
+        <div><p className="eyebrow">Healthy habits</p><h1>Wellbeing</h1><p>See today's balance. Parent-controlled limits cannot be changed from child mode.</p></div>
       </header>
 
+      <div className="kidos-wellbeing-progress" aria-label="Daily screen use">
+        <div><strong>{used} min used</strong><span>{usage?.remainingMinutes ?? Math.max(0, limit-used)} min remaining</span></div>
+        <div className="kidos-progress-track"><span style={{ width: `${percent}%` }} /></div>
+        {usage?.dailyLimitReached ? <p>Daily KidOS online/app limit reached. Local creation stays available.</p> : null}
+        {usage?.windDownActive ? <p>Wind-down time is active.</p> : null}
+        {usage?.breakDue ? <p>Good time for a short break.</p> : null}
+      </div>
+
       <div className="kidos-category-grid">
-        <label className="kidos-category-card">
+        <article className="kidos-category-card">
           <span aria-hidden="true">⏱️</span><strong>Daily screen target</strong>
-          <input type="number" min={15} max={600} value={settings.dailyMinutes} onChange={(event) => onChange({ ...settings, dailyMinutes: Number(event.target.value) })} />
-          <small>Minutes per day</small>
-        </label>
-        <label className="kidos-category-card">
+          <small>{settings.dailyMinutes} minutes per day · parent controlled</small>
+        </article>
+        <article className="kidos-category-card">
           <span aria-hidden="true">🧘</span><strong>Break reminder</strong>
-          <input type="number" min={10} max={120} value={settings.breakEveryMinutes} onChange={(event) => onChange({ ...settings, breakEveryMinutes: Number(event.target.value) })} />
-          <small>Remind every N minutes</small>
-        </label>
-        <label className="kidos-category-card">
-          <span aria-hidden="true">🌙</span><strong>Wind-down hour</strong>
-          <input type="number" min={0} max={23} value={settings.windDownHour} onChange={(event) => onChange({ ...settings, windDownHour: Number(event.target.value) })} />
-          <small>24-hour clock</small>
-        </label>
+          <small>Every {settings.breakEveryMinutes} minutes · parent controlled</small>
+        </article>
+        <article className="kidos-category-card">
+          <span aria-hidden="true">🌙</span><strong>Wind-down</strong>
+          <small>Starts at {String(settings.windDownHour).padStart(2,'0')}:00 · parent controlled</small>
+        </article>
         <article className="kidos-category-card">
           <span aria-hidden="true">👁️</span><strong>Comfort</strong>
           <label><input type="checkbox" checked={settings.largeText} onChange={(event) => onChange({ ...settings, largeText: event.target.checked })} /> Larger text</label>
@@ -41,7 +52,7 @@ export default function KidOSWellbeingScreen({
         </article>
       </div>
 
-      <button className="kidos-primary-action" type="button" onClick={onSave}>Save wellbeing settings</button>
+      <button className="kidos-primary-action" type="button" onClick={onSave}>Save comfort settings</button>
       <div className="kidos-action-status" role="status">{statusMessage}</div>
     </section>
   );
