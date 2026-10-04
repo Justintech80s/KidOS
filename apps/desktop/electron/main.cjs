@@ -1,8 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
-const fs = require('node:fs/promises');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
 const { requestGuardian } = require('./guardian-client.cjs');
+const { openKidOSDataStore } = require('./data-store.cjs');
 
 const isDev = Boolean(process.env.KIDOS_DESKTOP_DEV_URL);
 const isSmokeTest = process.env.KIDOS_ELECTRON_SMOKE === '1';
@@ -62,71 +61,38 @@ function workspacePlan(prompt) {
   };
 }
 
-async function saveWorkspacePlan(prompt) {
-  const plan = workspacePlan(prompt);
-  const directory = path.join(app.getPath('userData'), 'workspaces');
-  await fs.mkdir(directory, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const record = { ...plan, prompt: String(prompt).slice(0, 2000), createdAt: new Date().toISOString() };
-  await fs.writeFile(path.join(directory, `${stamp}.json`), JSON.stringify(record, null, 2), { encoding: 'utf8', mode: 0o600 });
-  return plan;
+function saveWorkspacePlan(prompt) {
+  return workspacePlan(prompt);
 }
 
-const WORKSPACE_KINDS = new Set(['story', 'drawing_presentation', 'beginner_coding']);
+let kidOSDataStore = null;
+let usageTimer = null;
 
-function workspaceDocumentDirectory() {
-  return path.join(app.getPath('userData'), 'workspace-documents');
+function dataStore() {
+  if (!kidOSDataStore) throw new Error('KidOS data store is not ready.');
+  return kidOSDataStore;
 }
 
-function normalizeWorkspaceDocument(input, existing) {
-  const kind = WORKSPACE_KINDS.has(String(input?.kind)) ? String(input.kind) : 'story';
-  const id = /^[A-Za-z0-9-]{1,80}$/.test(String(input?.id || '')) ? String(input.id) : randomUUID();
-  const now = new Date().toISOString();
-  return {
-    id,
-    kind,
-    title: String(input?.title || 'Untitled KidOS Project').trim().slice(0, 80) || 'Untitled KidOS Project',
-    prompt: String(input?.prompt || '').slice(0, 2000),
-    content: String(input?.content || '').slice(0, 100000),
-    createdAt: existing?.createdAt || now,
-    updatedAt: now,
-  };
+function childAccessStatus() {
+  return dataStore().getUsageStatus();
 }
 
-async function readWorkspaceDocumentFile(filePath) {
-  try {
-    const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
-    if (!parsed || !WORKSPACE_KINDS.has(parsed.kind) || typeof parsed.id !== 'string') return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+function assertChildOnlineAccessAvailable() {
+  const status = childAccessStatus();
+  if (status.dailyLimitReached) throw new Error('KidOS daily screen-time limit has been reached.');
+  if (status.windDownActive) throw new Error('KidOS wind-down time is active.');
+  return status;
 }
 
-async function listWorkspaceDocuments() {
-  const directory = workspaceDocumentDirectory();
-  await fs.mkdir(directory, { recursive: true });
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  const documents = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.project.json')) continue;
-    const document = await readWorkspaceDocumentFile(path.join(directory, entry.name));
-    if (document) documents.push(document);
-  }
-  return documents
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, 50);
-}
-
-async function saveWorkspaceDocument(input) {
-  const directory = workspaceDocumentDirectory();
-  await fs.mkdir(directory, { recursive: true });
-  const safeId = /^[A-Za-z0-9-]{1,80}$/.test(String(input?.id || '')) ? String(input.id) : randomUUID();
-  const target = path.join(directory, `${safeId}.project.json`);
-  const existing = await readWorkspaceDocumentFile(target);
-  const document = normalizeWorkspaceDocument({ ...input, id: safeId }, existing);
-  await fs.writeFile(target, JSON.stringify(document, null, 2), { encoding: 'utf8', mode: 0o600 });
-  return document;
+function startUsageTracking() {
+  if (usageTimer) clearInterval(usageTimer);
+  usageTimer = setInterval(() => {
+    try {
+      const active = BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isFocused());
+      if (active) dataStore().addUsageSeconds(60);
+    } catch {}
+  }, 60_000);
+  usageTimer.unref?.();
 }
 
 function hardenWebUrl(candidate) {
@@ -168,6 +134,7 @@ function getProtectedBrowserSession() {
 }
 
 async function openProtectedBrowser(candidate) {
+  assertChildOnlineAccessAvailable();
   const first = await navigationDecision(candidate);
   if (first.decision !== 'allow') {
     throw new Error(first.decision === 'require_parent' ? 'Parent approval is required for this destination.' : 'KidOS Guardian blocked this destination.');
@@ -244,6 +211,7 @@ async function listApprovedAppsInternal() {
 }
 
 async function askKidOSAi(query) {
+  assertChildOnlineAccessAvailable();
   const text = String(query || '').trim();
   if (!text) throw new Error('Ask KidOS AI a question first.');
   const endpoint = process.env.KIDOS_AI_ENDPOINT;
@@ -274,25 +242,21 @@ async function askKidOSAi(query) {
   return { available: true, answer: data.answer.trim().slice(0, 12000) };
 }
 
-async function loadWellbeing() {
-  const file = path.join(app.getPath('userData'), 'wellbeing.json');
-  try {
-    return JSON.parse(await fs.readFile(file, 'utf8'));
-  } catch {
-    return { dailyMinutes: 120, breakEveryMinutes: 30, windDownHour: 20, largeText: false, reducedMotion: false };
-  }
+function loadWellbeing() {
+  return dataStore().getWellbeing();
 }
 
-async function saveWellbeing(value) {
-  const next = {
-    dailyMinutes: Math.min(600, Math.max(15, Number(value?.dailyMinutes) || 120)),
-    breakEveryMinutes: Math.min(120, Math.max(10, Number(value?.breakEveryMinutes) || 30)),
-    windDownHour: Math.min(23, Math.max(0, Number(value?.windDownHour) || 20)),
-    largeText: Boolean(value?.largeText),
-    reducedMotion: Boolean(value?.reducedMotion),
-  };
-  await fs.writeFile(path.join(app.getPath('userData'), 'wellbeing.json'), JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
-  return next;
+function saveWellbeing(value) {
+  return dataStore().saveWellbeing(value, false);
+}
+
+async function saveParentWellbeing(pin, value) {
+  const response = await guardian('verify_parent_pin', { pin: String(pin) });
+  if (response.type !== 'parent_verification' || !response.authorized) {
+    throw new Error(response.locked ? 'Parent PIN is temporarily locked.' : 'Parent PIN was not accepted.');
+  }
+  dataStore().createBackup('parent-settings');
+  return dataStore().saveWellbeing(value, true);
 }
 
 function createWindow() {
@@ -354,7 +318,10 @@ function createWindow() {
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  kidOSDataStore = openKidOSDataStore(app.getPath('userData'));
+  await kidOSDataStore.migrateLegacyFiles();
+  startUsageTracking();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
   ipcMain.handle('kidos-desktop:runtime', async () => {
@@ -367,8 +334,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('kidos-desktop:guardian-status', () => guardianStatus());
   ipcMain.handle('kidos-desktop:plan-workspace', (_event, prompt) => saveWorkspacePlan(prompt));
-  ipcMain.handle('kidos-desktop:list-workspace-documents', () => listWorkspaceDocuments());
-  ipcMain.handle('kidos-desktop:save-workspace-document', (_event, document) => saveWorkspaceDocument(document));
+  ipcMain.handle('kidos-desktop:list-workspace-documents', () => dataStore().listWorkspaceDocuments());
+  ipcMain.handle('kidos-desktop:save-workspace-document', (_event, document) => dataStore().saveWorkspaceDocument(document));
+  ipcMain.handle('kidos-desktop:create-data-backup', () => dataStore().createBackup('manual'));
+  ipcMain.handle('kidos-desktop:usage-status', () => childAccessStatus());
   ipcMain.handle('kidos-desktop:evaluate-navigation', async (_event, url) => (await navigationDecision(url)).decision);
   ipcMain.handle('kidos-desktop:evaluate-download', async (_event, fileName, mimeType) => {
     const response = await guardian('evaluate_download', {
@@ -446,6 +415,7 @@ app.whenReady().then(() => {
     return apps.filter((entry) => String(entry.id).toLowerCase() !== 'kidos').map((entry) => ({ id: entry.id, displayName: entry.display_name }));
   });
   ipcMain.handle('kidos-desktop:launch-approved-app', async (_event, appId) => {
+    assertChildOnlineAccessAvailable();
     const apps = await listApprovedAppsInternal();
     const selected = apps.find((entry) => entry.id === appId && String(entry.id).toLowerCase() !== 'kidos');
     if (!selected) throw new Error('This app is not in the active Guardian approved-app profile.');
@@ -491,6 +461,7 @@ app.whenReady().then(() => {
   ipcMain.handle('kidos-desktop:ask-ai', (_event, query) => askKidOSAi(query));
   ipcMain.handle('kidos-desktop:get-wellbeing', () => loadWellbeing());
   ipcMain.handle('kidos-desktop:save-wellbeing', (_event, value) => saveWellbeing(value));
+  ipcMain.handle('kidos-desktop:save-parent-wellbeing', (_event, pin, value) => saveParentWellbeing(pin, value));
 
   ipcMain.handle('kidos-desktop:open-approved-resource', async (_event, resource) => {
     const url = APPROVED_ONLINE_RESOURCES[resource];
@@ -503,6 +474,17 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  if (usageTimer) {
+    clearInterval(usageTimer);
+    usageTimer = null;
+  }
+  if (kidOSDataStore) {
+    try { kidOSDataStore.close(); } catch {}
+    kidOSDataStore = null;
+  }
 });
 
 app.on('window-all-closed', () => {
