@@ -171,6 +171,31 @@ jobs:
             throw "KidOS Windows installer does not have a valid Authenticode signature."
           }
 
+      - name: Generate signed updater metadata
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:GITHUB_WORKSPACE "KidOS-Windows-x64-0.1.0-Setup.exe"
+          if (-not (Test-Path $installer)) { throw "Final KidOS installer is missing." }
+          $bytes = [System.IO.File]::ReadAllBytes($installer)
+          $sha = [System.Security.Cryptography.SHA512]::Create()
+          try {
+            $digest = [Convert]::ToBase64String($sha.ComputeHash($bytes))
+          } finally {
+            $sha.Dispose()
+          }
+          $size = (Get-Item $installer).Length
+          $releaseDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+          @"
+          version: 0.1.0
+          files:
+            - url: KidOS-Windows-x64-0.1.0-Setup.exe
+              sha512: $digest
+              size: $size
+          path: KidOS-Windows-x64-0.1.0-Setup.exe
+          sha512: $digest
+          releaseDate: '$releaseDate'
+          "@ | Set-Content "latest.yml" -Encoding UTF8
+
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
@@ -197,12 +222,14 @@ jobs:
           This remains a PRE-PRODUCTION release. It should be tested on a disposable Windows test account or test PC until real reboot → child-login → Assigned Access validation, multi-day real-use testing, and the complete trusted-signing gate have passed.
 
           The installer requires administrator approval during setup so it can install the Guardian and classifier services. The KidOS application itself runs as the standard child user.
+
+          Parent Dashboard includes KidOS update checks. Update download/install actions require the parent PIN, and latest.yml is generated from the final signed installer so updater integrity checks match the published binary.
           "@
 
           gh release view desktop-latest --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" --clobber --repo "${{ github.repository }}"
+            gh release upload desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" "latest.yml" --clobber --repo "${{ github.repository }}"
             gh release edit desktop-latest --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
           } else {
-            gh release create desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
+            gh release create desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" "latest.yml" --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
           }
