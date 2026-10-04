@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('kidosDesktop', Object.freeze({
   runtime: () => ipcRenderer.invoke('kidos-desktop:runtime'),
   guardianStatus: () => ipcRenderer.invoke('kidos-desktop:guardian-status'),
   planWorkspace: (prompt) => ipcRenderer.invoke('kidos-desktop:plan-workspace', prompt),
+  listWorkspaceDocuments: () => ipcRenderer.invoke('kidos-desktop:list-workspace-documents'),
+  saveWorkspaceDocument: (document) => ipcRenderer.invoke('kidos-desktop:save-workspace-document', document),
   evaluateNavigation: (url) => ipcRenderer.invoke('kidos-desktop:evaluate-navigation', url),
   evaluateDownload: (fileName, mimeType) => ipcRenderer.invoke('kidos-desktop:evaluate-download', fileName, mimeType),
   openProtectedBrowser: (url) => ipcRenderer.invoke('kidos-desktop:open-protected-browser', url),
