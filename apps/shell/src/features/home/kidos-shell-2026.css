@@ -34,3 +34,26 @@
 .kidos-approved-resource:hover{filter:brightness(1.05)}
 .kidos-approved-resource:focus-visible{outline:none;box-shadow:var(--kidos-focus)}
 .kidos-third-party-note{margin:8px 0 0;color:var(--kidos-muted);font-size:.78rem;line-height:1.45}
+
+
+/* Functional child modules */
+button.kidos-category-card{color:#fff;text-align:left;font:inherit;cursor:pointer;transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
+button.kidos-category-card:hover{transform:translateY(-3px);filter:brightness(1.06);box-shadow:0 22px 48px rgba(0,35,62,.25)}
+button.kidos-category-card:focus-visible{outline:none;box-shadow:var(--kidos-focus)}
+.kidos-workspace-editor{display:grid;gap:14px;margin-top:22px;padding:20px;border-radius:22px;background:#f6fbff;border:1px solid #d7e8f4}
+.kidos-workspace-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.kidos-workspace-heading h2{margin:.15em 0;color:var(--kidos-ink)}
+.kidos-workspace-heading p{margin:.2em 0;color:var(--kidos-muted)}
+.kidos-project-saved-badge{padding:7px 10px;border-radius:999px;background:#dff7e8;color:#236340;font-size:.75rem;font-weight:850;white-space:nowrap}
+.kidos-workspace-editor label{display:grid;gap:7px;color:var(--kidos-ink);font-weight:800}
+.kidos-workspace-editor input,.kidos-workspace-editor textarea{width:100%;border:1px solid #cbdbe7;border-radius:14px;padding:12px 13px;background:#fff;color:var(--kidos-ink);font:inherit}
+.kidos-workspace-editor textarea{resize:vertical;min-height:220px;line-height:1.5}
+.kidos-workspace-editor .kidos-code-editor{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+.kidos-recent-projects{margin-top:22px;padding-top:18px;border-top:1px solid #d8e6ef}
+.kidos-recent-projects h2{margin:.1em 0 .6em;color:var(--kidos-ink)}
+.kidos-recent-projects>p{color:var(--kidos-muted)}
+.kidos-recent-project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.kidos-recent-project-grid button{display:grid;gap:4px;padding:13px 14px;border:1px solid #d6e5ef;border-radius:14px;background:#fff;color:var(--kidos-ink);text-align:left;font:inherit;cursor:pointer}
+.kidos-recent-project-grid button:hover{background:#edf7ff}
+.kidos-recent-project-grid small{color:var(--kidos-muted);text-transform:capitalize}
+@media(max-width:760px){.kidos-recent-project-grid{grid-template-columns:1fr}.kidos-workspace-heading{display:grid}}
