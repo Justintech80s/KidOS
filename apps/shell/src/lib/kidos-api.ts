@@ -80,6 +80,14 @@ export interface UsageStatus {
   windDownActive: boolean;
 }
 
+export interface UpdateStatus {
+  status: 'idle' | 'development' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'error' | 'unavailable';
+  currentVersion?: string | null;
+  availableVersion?: string | null;
+  percent?: number | null;
+  error?: string | null;
+}
+
 export interface WorkspaceDocument {
   id?: string;
   kind: WorkspacePlan['kind'];
@@ -120,6 +128,10 @@ export interface KidOSApi {
   getWellbeing?(): Promise<WellbeingSettings>;
   saveWellbeing?(settings: WellbeingSettings): Promise<WellbeingSettings>;
   saveParentWellbeing?(pin: string, settings: WellbeingSettings): Promise<WellbeingSettings>;
+  getUpdateStatus?(): Promise<UpdateStatus>;
+  checkUpdates?(): Promise<UpdateStatus>;
+  downloadUpdate?(pin: string): Promise<UpdateStatus>;
+  installUpdate?(pin: string): Promise<boolean>;
 }
 
 export const tauriKidOSApi: KidOSApi = {
@@ -174,6 +186,10 @@ type DesktopBridge = {
   getWellbeing(): Promise<WellbeingSettings>;
   saveWellbeing(settings: WellbeingSettings): Promise<WellbeingSettings>;
   saveParentWellbeing(pin: string, settings: WellbeingSettings): Promise<WellbeingSettings>;
+  updateStatus(): Promise<UpdateStatus>;
+  checkUpdates(): Promise<UpdateStatus>;
+  downloadUpdate(pin: string): Promise<UpdateStatus>;
+  installUpdate(pin: string): Promise<boolean>;
 };
 
 function desktopBridge(): DesktopBridge | undefined {
@@ -215,6 +231,10 @@ export const electronKidOSApi: KidOSApi = {
   getWellbeing() { return desktopBridge()!.getWellbeing(); },
   saveWellbeing(settings) { return desktopBridge()!.saveWellbeing(settings); },
   saveParentWellbeing(pin, settings) { return desktopBridge()!.saveParentWellbeing(pin, settings); },
+  getUpdateStatus() { return desktopBridge()!.updateStatus(); },
+  checkUpdates() { return desktopBridge()!.checkUpdates(); },
+  downloadUpdate(pin) { return desktopBridge()!.downloadUpdate(pin); },
+  installUpdate(pin) { return desktopBridge()!.installUpdate(pin); },
 };
 
 export function runtimeKidOSApi(): KidOSApi {
