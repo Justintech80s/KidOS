@@ -1389,6 +1389,16 @@ mod approved_module_navigation_tests {
     use super::*;
 
     #[test]
+    fn policy_digest_is_deterministic_and_detects_changes() {
+        let first = policy_digest(br#"{"child_age":10}"#);
+        let same = policy_digest(br#"{"child_age":10}"#);
+        let changed = policy_digest(br#"{"child_age":11}"#);
+        assert_eq!(first, same);
+        assert_ne!(first, changed);
+        assert_eq!(first.len(), 64);
+    }
+
+    #[test]
     fn built_in_child_resources_are_allowed_by_default() {
         let policy = ParentPolicyConfig::default();
         assert_eq!(guardian_navigation_decision("https://www.khanacademy.org/math", &policy), "allow");
