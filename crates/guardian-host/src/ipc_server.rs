@@ -30,7 +30,7 @@ use policy_core::{
     evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
     evaluate_navigation as evaluate_navigation_policy,
     DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, NavigationContext,
-    PolicyDecision,
+    PolicyDecision, SiteCategory,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
@@ -363,6 +363,23 @@ fn domain_matches(host: &str, rule: &str) -> bool {
 }
 
 #[cfg(target_os = "windows")]
+fn built_in_site_category(host: &str) -> SiteCategory {
+    if ["khanacademy.org", "pbskids.org", "kiddle.co"]
+        .iter()
+        .any(|domain| domain_matches(host, domain))
+    {
+        SiteCategory::Educational
+    } else if ["kids.youtube.com", "account.microsoft.com"]
+        .iter()
+        .any(|domain| domain_matches(host, domain))
+    {
+        SiteCategory::Approved
+    } else {
+        SiteCategory::Unknown
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn guardian_navigation_decision(url: &str, policy: &ParentPolicyConfig) -> &'static str {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return "block";
@@ -373,6 +390,7 @@ fn guardian_navigation_decision(url: &str, policy: &ParentPolicyConfig) -> &'sta
     let context = NavigationContext::new(host, policy.child_age)
         .with_parent_blocked(parent_blocked)
         .with_parent_allowed(parent_allowed)
+        .with_category(built_in_site_category(host))
         .with_unknown_web_enabled(policy.teen_unknown_web_enabled);
     match evaluate_navigation_policy(&context) {
         PolicyDecision::Allow => "allow",
@@ -1296,5 +1314,29 @@ pub fn run_pipe_server() {
             let _ = DisconnectNamedPipe(pipe);
             CloseHandle(pipe);
         }
+    }
+}
+
+
+#[cfg(all(test, target_os = "windows"))]
+mod approved_module_navigation_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_child_resources_are_allowed_by_default() {
+        let policy = ParentPolicyConfig::default();
+        assert_eq!(guardian_navigation_decision("https://www.khanacademy.org/math", &policy), "allow");
+        assert_eq!(guardian_navigation_decision("https://pbskids.org/games/", &policy), "allow");
+        assert_eq!(guardian_navigation_decision("https://kids.youtube.com/", &policy), "allow");
+    }
+
+    #[test]
+    fn unknown_sites_still_require_parent_and_parent_block_wins() {
+        let policy = ParentPolicyConfig::default();
+        assert_eq!(guardian_navigation_decision("https://unknown.example/", &policy), "require_parent");
+
+        let mut blocked = ParentPolicyConfig::default();
+        blocked.block_domains.push("khanacademy.org".into());
+        assert_eq!(guardian_navigation_decision("https://www.khanacademy.org/math", &blocked), "block");
     }
 }
