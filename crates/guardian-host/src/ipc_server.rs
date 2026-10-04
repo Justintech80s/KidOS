@@ -923,7 +923,7 @@ fn handle_request(
             if let Err(error) = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone()) {
                 return error_response("invalid_parent_policy", error.to_string());
             }
-            if let Err(error) = persist_parent_policy(&policy, &policy_integrity_store) {
+            if let Err(error) = persist_parent_policy(&policy, policy_integrity_store) {
                 return error_response("parent_policy_store_failed", error);
             }
             PrivilegedResponse::Ack { message: "Parent safety policy saved by Guardian.".into() }
@@ -1136,7 +1136,7 @@ fn handle_request(
             }
 
             match action.as_str() {
-                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy, &policy_integrity_store) {
+                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy, policy_integrity_store) {
                     Ok(()) => PrivilegedResponse::Ack { message: "KidOS parent policy was reset to safe defaults.".into() },
                     Err(message) => error_response("recovery_policy_reset_failed", message),
                 },
