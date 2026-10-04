@@ -73,6 +73,18 @@
       "createStartMenuShortcut": true,
       "shortcutName": "KidOS",
       "include": "build/installer.nsh"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Justintech80s",
+        "repo": "KidOS",
+        "releaseType": "prerelease"
+      }
+    ],
+    "generateUpdatesFilesForAllChannels": true
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }
