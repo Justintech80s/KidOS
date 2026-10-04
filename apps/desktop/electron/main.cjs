@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { requestGuardian } = require('./guardian-client.cjs');
 
 const isDev = Boolean(process.env.KIDOS_DESKTOP_DEV_URL);
@@ -69,6 +70,63 @@ async function saveWorkspacePlan(prompt) {
   const record = { ...plan, prompt: String(prompt).slice(0, 2000), createdAt: new Date().toISOString() };
   await fs.writeFile(path.join(directory, `${stamp}.json`), JSON.stringify(record, null, 2), { encoding: 'utf8', mode: 0o600 });
   return plan;
+}
+
+const WORKSPACE_KINDS = new Set(['story', 'drawing_presentation', 'beginner_coding']);
+
+function workspaceDocumentDirectory() {
+  return path.join(app.getPath('userData'), 'workspace-documents');
+}
+
+function normalizeWorkspaceDocument(input, existing) {
+  const kind = WORKSPACE_KINDS.has(String(input?.kind)) ? String(input.kind) : 'story';
+  const id = /^[A-Za-z0-9-]{1,80}$/.test(String(input?.id || '')) ? String(input.id) : randomUUID();
+  const now = new Date().toISOString();
+  return {
+    id,
+    kind,
+    title: String(input?.title || 'Untitled KidOS Project').trim().slice(0, 80) || 'Untitled KidOS Project',
+    prompt: String(input?.prompt || '').slice(0, 2000),
+    content: String(input?.content || '').slice(0, 100000),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+async function readWorkspaceDocumentFile(filePath) {
+  try {
+    const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    if (!parsed || !WORKSPACE_KINDS.has(parsed.kind) || typeof parsed.id !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function listWorkspaceDocuments() {
+  const directory = workspaceDocumentDirectory();
+  await fs.mkdir(directory, { recursive: true });
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const documents = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.project.json')) continue;
+    const document = await readWorkspaceDocumentFile(path.join(directory, entry.name));
+    if (document) documents.push(document);
+  }
+  return documents
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 50);
+}
+
+async function saveWorkspaceDocument(input) {
+  const directory = workspaceDocumentDirectory();
+  await fs.mkdir(directory, { recursive: true });
+  const safeId = /^[A-Za-z0-9-]{1,80}$/.test(String(input?.id || '')) ? String(input.id) : randomUUID();
+  const target = path.join(directory, `${safeId}.project.json`);
+  const existing = await readWorkspaceDocumentFile(target);
+  const document = normalizeWorkspaceDocument({ ...input, id: safeId }, existing);
+  await fs.writeFile(target, JSON.stringify(document, null, 2), { encoding: 'utf8', mode: 0o600 });
+  return document;
 }
 
 function hardenWebUrl(candidate) {
@@ -309,6 +367,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('kidos-desktop:guardian-status', () => guardianStatus());
   ipcMain.handle('kidos-desktop:plan-workspace', (_event, prompt) => saveWorkspacePlan(prompt));
+  ipcMain.handle('kidos-desktop:list-workspace-documents', () => listWorkspaceDocuments());
+  ipcMain.handle('kidos-desktop:save-workspace-document', (_event, document) => saveWorkspaceDocument(document));
   ipcMain.handle('kidos-desktop:evaluate-navigation', async (_event, url) => (await navigationDecision(url)).decision);
   ipcMain.handle('kidos-desktop:evaluate-download', async (_event, fileName, mimeType) => {
     const response = await guardian('evaluate_download', {
