@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspacePlan } from '@kidos/contracts';
-import type { ApprovedAppSummary, KidOSApi, WellbeingSettings, WorkspaceDocument } from '../../lib/kidos-api';
+import type { ApprovedAppSummary, KidOSApi, UsageStatus, WellbeingSettings, WorkspaceDocument } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 import KidOSAiScreen from './KidOSAiScreen';
 import KidOSCreateScreen from './KidOSCreateScreen';
@@ -67,6 +67,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [approvedApps, setApprovedApps] = useState<ApprovedAppSummary[]>([]);
   const [appsStatus, setAppsStatus] = useState('Loading Guardian-approved apps...');
   const [wellbeing, setWellbeing] = useState<WellbeingSettings>(DEFAULT_WELLBEING);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus>();
   const [wellbeingStatus, setWellbeingStatus] = useState('Loading wellbeing settings...');
   const parentPinRef = useRef<HTMLInputElement>(null);
 
@@ -92,6 +93,9 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
           recoveryAvailable,
           observedAt: Date.now(),
         }));
+        if (api.getUsageStatus) {
+          try { setUsageStatus(await api.getUsageStatus()); } catch {}
+        }
       } catch {
         if (mounted) setStatus(OFFLINE_KIDOS_STATUS);
       }
@@ -130,6 +134,13 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
         }
       } else if (active) {
         setWellbeingStatus('Wellbeing settings are local to the Electron build.');
+      }
+
+      if (api.getUsageStatus) {
+        try {
+          const usage = await api.getUsageStatus();
+          if (active) setUsageStatus(usage);
+        } catch {}
       }
 
       if (api.listWorkspaceDocuments) {
@@ -347,7 +358,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       case 'watch':
         return <KidOSWatchScreen statusMessage={watchStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setWatchStatus); }} />;
       case 'wellbeing':
-        return <KidOSWellbeingScreen settings={wellbeing} statusMessage={wellbeingStatus} onChange={setWellbeing} onSave={() => { void saveWellbeing(); }} />;
+        return <KidOSWellbeingScreen settings={wellbeing} usage={usageStatus} statusMessage={wellbeingStatus} onChange={setWellbeing} onSave={() => { void saveWellbeing(); }} />;
       case 'apps':
         return <KidOSMyAppsScreen apps={approvedApps} statusMessage={appsStatus} onRefresh={() => { void refreshApprovedApps(); }} onLaunch={(appId) => { void launchApprovedApp(appId); }} />;
       case 'browser':
