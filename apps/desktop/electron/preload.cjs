@@ -38,5 +38,10 @@ contextBridge.exposeInMainWorld('kidosDesktop', Object.freeze({
   saveWellbeing: (value) => ipcRenderer.invoke('kidos-desktop:save-wellbeing', value),
   saveParentWellbeing: (pin, value) => ipcRenderer.invoke('kidos-desktop:save-parent-wellbeing', pin, value),
 
+  updateStatus: () => ipcRenderer.invoke('kidos-desktop:update-status'),
+  checkUpdates: () => ipcRenderer.invoke('kidos-desktop:check-updates'),
+  downloadUpdate: (pin) => ipcRenderer.invoke('kidos-desktop:download-update', pin),
+  installUpdate: (pin) => ipcRenderer.invoke('kidos-desktop:install-update', pin),
+
   openApprovedResource: (resource) => ipcRenderer.invoke('kidos-desktop:open-approved-resource', resource),
 }));
