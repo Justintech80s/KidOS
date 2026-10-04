@@ -69,8 +69,20 @@ export interface WellbeingSettings {
   reducedMotion: boolean;
 }
 
+export interface WorkspaceDocument {
+  id?: string;
+  kind: WorkspacePlan['kind'];
+  title: string;
+  prompt: string;
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface KidOSApi {
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
+  listWorkspaceDocuments?(): Promise<WorkspaceDocument[]>;
+  saveWorkspaceDocument?(document: WorkspaceDocument): Promise<WorkspaceDocument>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   openProtectedBrowser?(url: string): Promise<void>;
@@ -122,6 +134,8 @@ type DesktopBridge = {
   guardianStatus(): Promise<GuardianStatus>;
   parentSetupStatus(): Promise<boolean>;
   planWorkspace(prompt: string): Promise<WorkspacePlan>;
+  listWorkspaceDocuments(): Promise<WorkspaceDocument[]>;
+  saveWorkspaceDocument(document: WorkspaceDocument): Promise<WorkspaceDocument>;
   evaluateNavigation(url: string): Promise<PolicyDecision>;
   evaluateDownload(fileName: string, mimeType: string): Promise<PolicyDecision>;
   openProtectedBrowser(url: string): Promise<void>;
@@ -156,6 +170,8 @@ export function isDesktopPreviewRuntime(): boolean {
 
 export const electronKidOSApi: KidOSApi = {
   planWorkspace(prompt) { return desktopBridge()!.planWorkspace(prompt); },
+  listWorkspaceDocuments() { return desktopBridge()!.listWorkspaceDocuments(); },
+  saveWorkspaceDocument(document) { return desktopBridge()!.saveWorkspaceDocument(document); },
   evaluateNavigation(url) { return desktopBridge()!.evaluateNavigation(url); },
   evaluateDownload(fileName, mimeType) { return desktopBridge()!.evaluateDownload(fileName, mimeType); },
   openProtectedBrowser(url) { return desktopBridge()!.openProtectedBrowser(url); },
