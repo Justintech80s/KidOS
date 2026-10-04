@@ -233,3 +233,13 @@ jobs:
           } else {
             gh release create desktop-latest "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" "latest.yml" --title "KidOS for Windows — Guardian Preview" --prerelease --notes $notes --repo "${{ github.repository }}"
           }
+
+          # electron-updater requires a semantic-version release tag.
+          $versionTag = "v0.1.0"
+          gh release view $versionTag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $versionTag "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" "latest.yml" --clobber --repo "${{ github.repository }}"
+            gh release edit $versionTag --title "KidOS for Windows v0.1.0" --prerelease --notes $notes --repo "${{ github.repository }}"
+          } else {
+            gh release create $versionTag "KidOS-Windows-x64-0.1.0-Setup.exe" "KidOS-Windows-SHA256SUMS.txt" "latest.yml" --title "KidOS for Windows v0.1.0" --prerelease --notes $notes --repo "${{ github.repository }}"
+          }
