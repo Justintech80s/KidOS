@@ -6,6 +6,7 @@ import SafetySummary, { type SafetySummaryData } from './SafetySummary';
 import QuarantineReview from './QuarantineReview';
 import RecoveryCenter from './RecoveryCenter';
 import ParentWellbeing from './ParentWellbeing';
+import ParentUpdateCenter from './ParentUpdateCenter';
 
 type ParentDashboardProps = {
   authorized: boolean;
@@ -14,6 +15,7 @@ type ParentDashboardProps = {
   clearSafetyEvents?: () => Promise<void>;
   lockdownApi?: Pick<KidOSApi, 'lockdownStatus' | 'configureWindowsLockdown' | 'requestParentMaintenanceUnlock' | 'removeWindowsLockdown' | 'listQuarantineMedia' | 'previewQuarantineMedia' | 'reviewQuarantineMedia' | 'getRecoveryStatus' | 'runParentRecovery'>;
   wellbeingApi?: Pick<KidOSApi, 'getWellbeing' | 'getUsageStatus' | 'saveParentWellbeing' | 'createDataBackup'>;
+  updateApi?: Pick<KidOSApi, 'getUpdateStatus' | 'checkUpdates' | 'downloadUpdate' | 'installUpdate'>;
   initialLockdownStatus?: LockdownStatus;
   initialPolicy?: ParentPolicyConfig;
 };
@@ -28,7 +30,7 @@ function timeToMinutes(value: string): number | undefined {
   return hours * 60 + minutes;
 }
 
-export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi, wellbeingApi, initialLockdownStatus, initialPolicy }: ParentDashboardProps) {
+export default function ParentDashboard({ authorized, savePolicy, safetySummary, clearSafetyEvents, lockdownApi, wellbeingApi, updateApi, initialLockdownStatus, initialPolicy }: ParentDashboardProps) {
   const [childAge, setChildAge] = useState(initialPolicy?.childAge ?? 10);
   const [allowDomains, setAllowDomains] = useState((initialPolicy?.allowDomains ?? []).join('\n'));
   const [blockDomains, setBlockDomains] = useState((initialPolicy?.blockDomains ?? []).join('\n'));
@@ -84,6 +86,7 @@ export default function ParentDashboard({ authorized, savePolicy, safetySummary,
     {lockdownApi?<LockdownSettings authorized={authorized} api={lockdownApi} initialStatus={initialLockdownStatus}/>:null}
     {lockdownApi?<QuarantineReview authorized={authorized} api={lockdownApi}/>:null}
     {wellbeingApi?<ParentWellbeing api={wellbeingApi}/>:null}
+    {updateApi?<ParentUpdateCenter api={updateApi}/>:null}
     {lockdownApi?<RecoveryCenter authorized={authorized} api={lockdownApi}/>:null}
     {safetySummary&&clearSafetyEvents?<SafetySummary authorized={authorized} summary={safetySummary} clearEvents={clearSafetyEvents}/>:null}
   </section>;
