@@ -40,6 +40,8 @@ jobs:
           node tests/security/repeat-command.test.mjs
           node tests/security/post-merge-workflow-contract.test.mjs
           node tests/security/release-evidence.test.mjs
+          node tests/security/visual-vm-runner-bootstrap.test.mjs
+          node tests/security/visual-vm-workflow.test.mjs
       - name: Verify Windows PowerShell 5.1 installer credentials
         shell: pwsh
         run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\tests\windows\installer-credential-compat.ps1
