@@ -26,9 +26,13 @@ use secure_store::{ParentAuthorization, ParentAuthorizationResult, SecretStore, 
 #[cfg(target_os = "windows")]
 use base64::Engine;
 #[cfg(target_os = "windows")]
+use sha2::{Digest, Sha256};
+#[cfg(target_os = "windows")]
 use policy_core::{
     evaluate_download as evaluate_download_policy, evaluate_media as evaluate_media_policy,
-    DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, PolicyDecision,
+    evaluate_navigation as evaluate_navigation_policy,
+    DownloadContext, DownloadMode, MediaCategory, MediaContext, MediaRisk, NavigationContext,
+    PolicyDecision, SiteCategory,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
@@ -54,6 +58,10 @@ fn wide(value: &str) -> Vec<u16> {
 
 #[cfg(target_os = "windows")]
 const PARENT_PIN_KEY: &str = "parent-pin";
+#[cfg(target_os = "windows")]
+const PARENT_POLICY_DIGEST_KEY: &str = "parent-policy-digest";
+#[cfg(target_os = "windows")]
+const POLICY_INTEGRITY_MARKER: &str = "policy-integrity-v1.enabled";
 #[cfg(target_os = "windows")]
 const PIPE_ACCESS_DUPLEX_VALUE: u32 = 0x0000_0003;
 
@@ -117,6 +125,19 @@ fn policy_path() -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "windows")]
+fn policy_integrity_marker_path() -> Result<PathBuf, String> {
+    Ok(guardian_data_dir()?.join(POLICY_INTEGRITY_MARKER))
+}
+
+#[cfg(target_os = "windows")]
+fn mark_policy_integrity_enabled() -> Result<(), String> {
+    let dir = guardian_data_dir()?;
+    fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
+    fs::write(policy_integrity_marker_path()?, b"1")
+        .map_err(|_| "Guardian could not record policy integrity initialization.".to_string())
+}
+
+#[cfg(target_os = "windows")]
 fn pin_is_initialized() -> bool {
     pin_marker_path().map(|path| path.exists()).unwrap_or(false)
 }
@@ -129,33 +150,72 @@ fn mark_pin_initialized() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn load_parent_policy() -> ParentPolicyConfig {
+fn policy_digest(contents: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(contents);
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(target_os = "windows")]
+fn load_parent_policy(integrity_store: &WindowsSecretStore) -> ParentPolicyConfig {
     let Ok(path) = policy_path() else { return ParentPolicyConfig::default(); };
-    let Ok(contents) = fs::read_to_string(&path) else { return ParentPolicyConfig::default(); };
-    match serde_json::from_str(&contents) {
+    let Ok(contents) = fs::read(&path) else { return ParentPolicyConfig::default(); };
+    let digest = policy_digest(&contents);
+
+    match integrity_store.verify_secret(PARENT_POLICY_DIGEST_KEY, &digest) {
+        Ok(true) => {}
+        Ok(false) => {
+            let integrity_already_enabled = policy_integrity_marker_path()
+                .map(|marker| marker.exists())
+                .unwrap_or(true);
+            let legacy_policy = serde_json::from_slice::<ParentPolicyConfig>(&contents);
+            if !integrity_already_enabled {
+                if let Ok(policy) = legacy_policy {
+                    // One-time migration from a pre-integrity KidOS install.
+                    if integrity_store.put_secret(PARENT_POLICY_DIGEST_KEY, &digest).is_ok()
+                        && mark_policy_integrity_enabled().is_ok()
+                    {
+                        return policy;
+                    }
+                }
+            }
+            let tampered = path.with_extension(format!("tampered-{}.json", now_seconds()));
+            let _ = fs::rename(&path, tampered);
+            mark_recovery_required("parent-policy-integrity-failed");
+            return ParentPolicyConfig::default();
+        }
+        Err(_) => {
+            mark_recovery_required("parent-policy-integrity-unavailable");
+            return ParentPolicyConfig::default();
+        }
+    }
+
+    match serde_json::from_slice(&contents) {
         Ok(policy) => policy,
         Err(_) => {
             let corrupt = path.with_extension(format!("corrupt-{}.json", now_seconds()));
             let _ = fs::rename(&path, corrupt);
-            let _ = fs::write(
-                guardian_data_dir().unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian")).join("recovery-required.flag"),
-                b"parent-policy-corrupt",
-            );
+            mark_recovery_required("parent-policy-corrupt");
             ParentPolicyConfig::default()
         }
     }
 }
 
 #[cfg(target_os = "windows")]
-fn persist_parent_policy(policy: &ParentPolicyConfig) -> Result<(), String> {
+fn persist_parent_policy(policy: &ParentPolicyConfig, integrity_store: &WindowsSecretStore) -> Result<(), String> {
     let dir = guardian_data_dir()?;
     fs::create_dir_all(&dir).map_err(|_| "Guardian could not create its protected data folder.".to_string())?;
     let path = policy_path()?;
     let temp = path.with_extension("json.tmp");
     let encoded = serde_json::to_vec_pretty(policy)
         .map_err(|_| "Guardian could not encode parent policy.".to_string())?;
-    fs::write(&temp, encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
+    fs::write(&temp, &encoded).map_err(|_| "Guardian could not save parent policy.".to_string())?;
     fs::rename(&temp, &path).map_err(|_| "Guardian could not finalize parent policy.".to_string())?;
+    let digest = policy_digest(&encoded);
+    integrity_store
+        .put_secret(PARENT_POLICY_DIGEST_KEY, &digest)
+        .map_err(|_| "Guardian could not bind parent policy integrity to secure storage.".to_string())?;
+    mark_policy_integrity_enabled()?;
     Ok(())
 }
 
@@ -218,13 +278,17 @@ fn classifier_healthy() -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn policy_file_valid() -> bool {
+fn policy_file_valid(integrity_store: &WindowsSecretStore) -> bool {
     let Ok(path) = policy_path() else { return false; };
     if !path.exists() {
         return true;
     }
-    let Ok(contents) = fs::read_to_string(path) else { return false; };
-    serde_json::from_str::<ParentPolicyConfig>(&contents).is_ok()
+    let Ok(contents) = fs::read(&path) else { return false; };
+    if serde_json::from_slice::<ParentPolicyConfig>(&contents).is_err() {
+        return false;
+    }
+    let digest = policy_digest(&contents);
+    integrity_store.verify_secret(PARENT_POLICY_DIGEST_KEY, &digest).unwrap_or(false)
 }
 
 #[cfg(target_os = "windows")]
@@ -236,12 +300,13 @@ fn recovery_reason() -> Option<String> {
 #[cfg(target_os = "windows")]
 fn reset_parent_policy_to_defaults(
     parent_policy: &mut GuardianPolicyStore,
+    integrity_store: &WindowsSecretStore,
 ) -> Result<(), String> {
     let policy = ParentPolicyConfig::default();
     parent_policy
         .replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone())
         .map_err(|error| error.to_string())?;
-    persist_parent_policy(&policy)?;
+    persist_parent_policy(&policy, integrity_store)?;
     clear_recovery_marker();
     Ok(())
 }
@@ -340,6 +405,73 @@ fn validate_approved_executable(app: &guardian_service::privileged_ipc::IpcAppro
         .ok_or_else(|| format!("Approved app '{}' path is not valid Unicode.", app.display_name))
 }
 
+
+#[cfg(target_os = "windows")]
+fn host_from_url(url: &str) -> &str {
+    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(without_scheme)
+        .split(':')
+        .next()
+        .unwrap_or(without_scheme)
+}
+
+#[cfg(target_os = "windows")]
+fn domain_matches(host: &str, rule: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    let rule = rule.trim().trim_end_matches('.').to_ascii_lowercase();
+    host == rule || host.ends_with(&format!(".{rule}"))
+}
+
+#[cfg(target_os = "windows")]
+fn built_in_site_category(host: &str) -> SiteCategory {
+    if ["khanacademy.org", "pbskids.org", "kiddle.co"]
+        .iter()
+        .any(|domain| domain_matches(host, domain))
+    {
+        SiteCategory::Educational
+    } else if ["kids.youtube.com", "account.microsoft.com"]
+        .iter()
+        .any(|domain| domain_matches(host, domain))
+    {
+        SiteCategory::Approved
+    } else {
+        SiteCategory::Unknown
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn guardian_navigation_decision(url: &str, policy: &ParentPolicyConfig) -> &'static str {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return "block";
+    }
+    let host = host_from_url(url);
+    let parent_blocked = policy.block_domains.iter().any(|rule| domain_matches(host, rule));
+    let parent_allowed = policy.allow_domains.iter().any(|rule| domain_matches(host, rule));
+    let context = NavigationContext::new(host, policy.child_age)
+        .with_parent_blocked(parent_blocked)
+        .with_parent_allowed(parent_allowed)
+        .with_category(built_in_site_category(host))
+        .with_unknown_web_enabled(policy.teen_unknown_web_enabled);
+    match evaluate_navigation_policy(&context) {
+        PolicyDecision::Allow => "allow",
+        PolicyDecision::Block => "block",
+        PolicyDecision::RequireParent => "require_parent",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn load_approved_apps() -> Vec<guardian_service::privileged_ipc::IpcApprovedApp> {
+    let Ok(bytes) = fs::read(lockdown_backup_path().unwrap_or_else(|_| PathBuf::from(r"C:\ProgramData\KidOS\Guardian\last-lockdown-profile.json"))) else {
+        return Vec::new();
+    };
+    let Ok(profile) = serde_json::from_slice::<guardian_service::privileged_ipc::IpcLockdownProfile>(&bytes) else {
+        return Vec::new();
+    };
+    profile.apps
+}
 
 #[cfg(target_os = "windows")]
 fn guardian_download_decision(
@@ -755,6 +887,7 @@ fn handle_request(
     lockdown_service: &mut PlatformLockdownService<ProductionWindowsPlatformAdapter>,
     parent_authorization: &mut ParentAuthorization<WindowsSecretStore>,
     parent_policy: &mut GuardianPolicyStore,
+    policy_integrity_store: &WindowsSecretStore,
 ) -> PrivilegedResponse {
     let envelope = match decode_privileged_request(bytes) {
         Ok(envelope) => envelope,
@@ -770,6 +903,9 @@ fn handle_request(
             let (state, reason) = current_platform_state();
             PrivilegedResponse::Status { state, reason }
         }
+        PrivilegedRequest::ParentSetupStatus => PrivilegedResponse::ParentSetup {
+            configured: pin_is_initialized(),
+        },
         PrivilegedRequest::ConfigureParentPin { new_pin, current_pin } => {
             if !(4..=8).contains(&new_pin.len()) || !new_pin.chars().all(|ch| ch.is_ascii_digit()) {
                 return error_response("invalid_parent_pin", "Parent PIN must contain 4 through 8 digits.");
@@ -814,13 +950,20 @@ fn handle_request(
             if let Err(error) = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, policy.clone()) {
                 return error_response("invalid_parent_policy", error.to_string());
             }
-            if let Err(error) = persist_parent_policy(&policy) {
+            if let Err(error) = persist_parent_policy(&policy, policy_integrity_store) {
                 return error_response("parent_policy_store_failed", error);
             }
             PrivilegedResponse::Ack { message: "Parent safety policy saved by Guardian.".into() }
         }
         PrivilegedRequest::GetParentPolicy => PrivilegedResponse::ParentPolicy {
             policy: parent_policy.current_parent_policy().clone(),
+        },
+        PrivilegedRequest::EvaluateNavigation { url } => {
+            let decision = guardian_navigation_decision(&url, parent_policy.current_parent_policy());
+            PrivilegedResponse::PolicyDecision { decision: decision.into() }
+        }
+        PrivilegedRequest::ListApprovedApps => PrivilegedResponse::ApprovedApps {
+            apps: load_approved_apps(),
         },
         PrivilegedRequest::EvaluateDownload {
             url,
@@ -1007,7 +1150,7 @@ fn handle_request(
                 classifier_healthy: classifier_healthy(),
                 recovery_required: marker_reason.is_some(),
                 recovery_reason: marker_reason,
-                policy_valid: policy_file_valid(),
+                policy_valid: policy_file_valid(policy_integrity_store),
                 lockdown_state,
             }
         }
@@ -1020,7 +1163,7 @@ fn handle_request(
             }
 
             match action.as_str() {
-                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy) {
+                "reset_policy_defaults" => match reset_parent_policy_to_defaults(parent_policy, policy_integrity_store) {
                     Ok(()) => PrivilegedResponse::Ack { message: "KidOS parent policy was reset to safe defaults.".into() },
                     Err(message) => error_response("recovery_policy_reset_failed", message),
                 },
@@ -1032,7 +1175,7 @@ fn handle_request(
                     Err(error) => error_response("recovery_remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
                 },
                 "clear_recovery_marker" => {
-                    if !policy_file_valid() {
+                    if !policy_file_valid(policy_integrity_store) {
                         return error_response("recovery_still_required", "Parent policy is still invalid.");
                     }
                     let (state, reason) = current_platform_state();
@@ -1045,7 +1188,13 @@ fn handle_request(
                 _ => error_response("invalid_recovery_action", "KidOS rejected an unknown recovery action."),
             }
         }
-        PrivilegedRequest::ApplyLockdown { profile } => {
+        PrivilegedRequest::ApplyLockdown { pin, profile } => {
+            match verify_parent(parent_authorization, &pin) {
+                Ok(ParentAuthorizationResult::Authorized) => {}
+                Ok(ParentAuthorizationResult::Denied) => return error_response("parent_pin_denied", "Parent PIN was not accepted."),
+                Ok(ParentAuthorizationResult::Locked) => return error_response("parent_pin_locked", "Parent PIN entry is temporarily locked."),
+                Err(error) => return error_response("parent_pin_error", error),
+            }
             if let Err(error) = persist_lockdown_profile(&profile) {
                 return error_response("recovery_backup_failed", error);
             }
@@ -1103,7 +1252,12 @@ fn handle_request(
                 Err(error) => return error_response("parent_pin_error", error),
             }
             match lockdown_service.remove_lockdown(true) {
-                Ok(()) => PrivilegedResponse::Status { state: "unmanaged".into(), reason: None },
+                Ok(()) => {
+                    if let Ok(path) = lockdown_backup_path() {
+                        let _ = fs::remove_file(path);
+                    }
+                    PrivilegedResponse::Status { state: "unmanaged".into(), reason: None }
+                }
                 Err(error) => error_response("remove_lockdown_failed", format!("Guardian could not remove lockdown: {error:?}")),
             }
         }
@@ -1161,7 +1315,8 @@ pub fn run_pipe_server() {
     let mut parent_authorization =
         ParentAuthorization::new(WindowsSecretStore::new("KidOSGuardian"), PARENT_PIN_KEY);
     let mut parent_policy = GuardianPolicyStore::default();
-    let persisted_policy = load_parent_policy();
+    let policy_integrity_store = WindowsSecretStore::new("KidOSGuardian");
+    let persisted_policy = load_parent_policy(&policy_integrity_store);
     let _ = parent_policy.replace_parent_policy(GuardianActor::ParentAuthorized, persisted_policy);
 
     loop {
@@ -1203,6 +1358,7 @@ pub fn run_pipe_server() {
                 &mut lockdown_service,
                 &mut parent_authorization,
                 &mut parent_policy,
+                &policy_integrity_store,
             )
         } else {
             error_response("read_failed", "Guardian could not read the privileged request.")
@@ -1224,5 +1380,39 @@ pub fn run_pipe_server() {
             let _ = DisconnectNamedPipe(pipe);
             CloseHandle(pipe);
         }
+    }
+}
+
+
+#[cfg(all(test, target_os = "windows"))]
+mod approved_module_navigation_tests {
+    use super::*;
+
+    #[test]
+    fn policy_digest_is_deterministic_and_detects_changes() {
+        let first = policy_digest(br#"{"child_age":10}"#);
+        let same = policy_digest(br#"{"child_age":10}"#);
+        let changed = policy_digest(br#"{"child_age":11}"#);
+        assert_eq!(first, same);
+        assert_ne!(first, changed);
+        assert_eq!(first.len(), 64);
+    }
+
+    #[test]
+    fn built_in_child_resources_are_allowed_by_default() {
+        let policy = ParentPolicyConfig::default();
+        assert_eq!(guardian_navigation_decision("https://www.khanacademy.org/math", &policy), "allow");
+        assert_eq!(guardian_navigation_decision("https://pbskids.org/games/", &policy), "allow");
+        assert_eq!(guardian_navigation_decision("https://kids.youtube.com/", &policy), "allow");
+    }
+
+    #[test]
+    fn unknown_sites_still_require_parent_and_parent_block_wins() {
+        let policy = ParentPolicyConfig::default();
+        assert_eq!(guardian_navigation_decision("https://unknown.example/", &policy), "require_parent");
+
+        let mut blocked = ParentPolicyConfig::default();
+        blocked.block_domains.push("khanacademy.org".into());
+        assert_eq!(guardian_navigation_decision("https://www.khanacademy.org/math", &blocked), "block");
     }
 }

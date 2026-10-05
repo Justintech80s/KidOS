@@ -1,18 +1,52 @@
 name: KidOS Guardian Service CI
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 
 on:
   pull_request:
     paths:
       - 'crates/guardian-service/**'
+      - 'crates/guardian-host/**'
+      - 'crates/secure-store/**'
       - 'crates/policy-core/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/guardian-service-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'crates/guardian-service/**'
+      - 'crates/guardian-host/**'
+      - 'crates/secure-store/**'
+      - 'crates/policy-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/guardian-service-ci.yml'
 
 jobs:
-  verify-guardian-service:
+  guardian-policy:
+    name: Guardian policy tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Test Guardian Service
+      - name: Test Guardian policy service
         run: cargo test -p guardian-service
+      - name: Check portable Guardian host boundary
+        run: cargo check -p kidos-guardian-host
+
+  guardian-windows-host:
+    name: Guardian Windows host security boundary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile Windows secure store and Guardian host
+        run: |
+          cargo check -p secure-store
+          cargo check -p kidos-guardian-host
+      - name: Test Windows Guardian host
+        run: cargo test -p kidos-guardian-host

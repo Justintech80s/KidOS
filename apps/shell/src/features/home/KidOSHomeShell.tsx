@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KidOSApi } from '../../lib/kidos-api';
+import type { WorkspacePlan } from '@kidos/contracts';
+import type { ApprovedAppSummary, KidOSApi, UsageStatus, WellbeingSettings, WorkspaceDocument } from '../../lib/kidos-api';
 import { prepareProtectedNavigation } from '../browser/protected-navigation';
 import KidOSAiScreen from './KidOSAiScreen';
 import KidOSCreateScreen from './KidOSCreateScreen';
@@ -17,6 +18,33 @@ import KidOSWellbeingScreen from './KidOSWellbeingScreen';
 import { OFFLINE_KIDOS_STATUS, normalizeKidOSSystemStatus, type KidOSSystemStatus } from './system-status';
 import './kidos-shell-2026.css';
 
+const DEFAULT_WELLBEING: WellbeingSettings = {
+  dailyMinutes: 120,
+  breakEveryMinutes: 30,
+  windDownHour: 20,
+  largeText: false,
+  reducedMotion: false,
+};
+
+function starterContent(plan: WorkspacePlan, prompt: string) {
+  if (plan.kind === 'beginner_coding') {
+    return `# ${prompt}\n\n# Goal\nDescribe what your project should do.\n\n# Steps\n1. Start with one small idea.\n2. Write or change one part at a time.\n3. Test what you made.\n\n# My code / pseudocode\n`;
+  }
+  if (plan.kind === 'drawing_presentation') {
+    return `Project: ${prompt}\n\nSection 1 — Main idea\n\nSection 2 — Important facts or visuals\n\nSection 3 — What I want people to remember\n`;
+  }
+  return `Title: ${prompt}\n\nBeginning\n\nMiddle\n\nEnding\n`;
+}
+
+function workspacePlanForDocument(project: WorkspaceDocument): WorkspacePlan {
+  const capability = project.kind === 'story' ? 'story' : project.kind;
+  return {
+    kind: project.kind,
+    title: project.kind === 'story' ? 'Story Workspace' : project.kind === 'drawing_presentation' ? 'Drawing & Presentation Workspace' : 'Beginner Coding Workspace',
+    capabilities: [capability, 'export_project'],
+  };
+}
+
 export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: KidOSApi; onOpenParentWorkspace(): void }) {
   const [active, setActive] = useState<KidOSDestination>('home');
   const [status, setStatus] = useState<KidOSSystemStatus>(OFFLINE_KIDOS_STATUS);
@@ -24,10 +52,23 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
   const [searchStatus, setSearchStatus] = useState('');
   const [createValue, setCreateValue] = useState('');
   const [workspaceStatus, setWorkspaceStatus] = useState('');
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspacePlan>();
+  const [projectId, setProjectId] = useState<string>();
+  const [projectTitle, setProjectTitle] = useState('');
+  const [projectContent, setProjectContent] = useState('');
+  const [savedProjects, setSavedProjects] = useState<WorkspaceDocument[]>([]);
+  const [learnStatus, setLearnStatus] = useState('Choose a learning subject.');
+  const [playStatus, setPlayStatus] = useState('Choose a protected game category.');
+  const [watchStatus, setWatchStatus] = useState('Choose a protected video category.');
   const [aiValue, setAiValue] = useState('');
   const [aiAnswer, setAiAnswer] = useState('Ask a school-safe question and KidOS AI will help you think it through.');
   const [parentPin, setParentPin] = useState('');
   const [parentStatus, setParentStatus] = useState('');
+  const [approvedApps, setApprovedApps] = useState<ApprovedAppSummary[]>([]);
+  const [appsStatus, setAppsStatus] = useState('Loading Guardian-approved apps...');
+  const [wellbeing, setWellbeing] = useState<WellbeingSettings>(DEFAULT_WELLBEING);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus>();
+  const [wellbeingStatus, setWellbeingStatus] = useState('Loading wellbeing settings...');
   const parentPinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -52,6 +93,9 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
           recoveryAvailable,
           observedAt: Date.now(),
         }));
+        if (api.getUsageStatus) {
+          try { setUsageStatus(await api.getUsageStatus()); } catch {}
+        }
       } catch {
         if (mounted) setStatus(OFFLINE_KIDOS_STATUS);
       }
@@ -60,6 +104,126 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     const id = window.setInterval(refresh, 10_000);
     return () => { mounted = false; window.clearInterval(id); };
   }, [api]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadChildServices() {
+      if (api.listApprovedApps) {
+        try {
+          const apps = await api.listApprovedApps();
+          if (active) {
+            setApprovedApps(apps);
+            setAppsStatus(apps.length ? 'Approved apps are ready.' : 'No extra apps are approved yet.');
+          }
+        } catch {
+          if (active) setAppsStatus('Guardian approved-app profile is unavailable.');
+        }
+      } else if (active) {
+        setAppsStatus('Approved app launching is unavailable in this build.');
+      }
+
+      if (api.getWellbeing) {
+        try {
+          const next = await api.getWellbeing();
+          if (active) {
+            setWellbeing(next);
+            setWellbeingStatus('Wellbeing settings loaded.');
+          }
+        } catch {
+          if (active) setWellbeingStatus('Using default wellbeing settings.');
+        }
+      } else if (active) {
+        setWellbeingStatus('Wellbeing settings are local to the Electron build.');
+      }
+
+      if (api.getUsageStatus) {
+        try {
+          const usage = await api.getUsageStatus();
+          if (active) setUsageStatus(usage);
+        } catch {}
+      }
+
+      if (api.listWorkspaceDocuments) {
+        try {
+          const projects = await api.listWorkspaceDocuments();
+          if (active) setSavedProjects(projects);
+        } catch {
+          if (active) setWorkspaceStatus('Saved KidOS projects could not be loaded.');
+        }
+      }
+    }
+    void loadChildServices();
+    return () => { active = false; };
+  }, [api]);
+
+  async function refreshApprovedApps() {
+    if (!api.listApprovedApps) {
+      setAppsStatus('Approved app launching is unavailable in this build.');
+      return;
+    }
+    setAppsStatus('Checking Guardian-approved apps...');
+    try {
+      const apps = await api.listApprovedApps();
+      setApprovedApps(apps);
+      setAppsStatus(apps.length ? 'Approved apps refreshed.' : 'No extra apps are approved yet.');
+    } catch {
+      setAppsStatus('Guardian approved-app profile could not be read.');
+    }
+  }
+
+  async function launchApprovedApp(appId: string) {
+    if (!api.launchApprovedApp) {
+      setAppsStatus('Approved app launching is unavailable in this build.');
+      return;
+    }
+    setAppsStatus('Launching approved app...');
+    try {
+      await api.launchApprovedApp(appId);
+      setAppsStatus('Approved app launched.');
+    } catch {
+      setAppsStatus('KidOS blocked or could not launch that app.');
+    }
+  }
+
+  async function saveWellbeing() {
+    if (!api.saveWellbeing) {
+      setWellbeingStatus('Wellbeing saving is unavailable in this build.');
+      return;
+    }
+    setWellbeingStatus('Saving wellbeing settings...');
+    try {
+      const saved = await api.saveWellbeing(wellbeing);
+      setWellbeing(saved);
+      setWellbeingStatus('Wellbeing settings saved on this device.');
+    } catch {
+      setWellbeingStatus('KidOS could not save wellbeing settings.');
+    }
+  }
+
+  async function openProtectedModuleResource(
+    label: string,
+    url: string,
+    setMessage: (message: string) => void,
+  ) {
+    setMessage(`Checking ${label} with KidOS Guardian...`);
+    try {
+      const result = await prepareProtectedNavigation(url, api.evaluateNavigation);
+      if (result.state === 'load') {
+        if (!api.openProtectedBrowser) {
+          setMessage(`${label} stayed closed because KidOS Safe Browser is unavailable.`);
+          return;
+        }
+        await api.openProtectedBrowser(result.url);
+        setMessage(`${label} opened through KidOS Safe Browser.`);
+      } else if (result.state === 'parent_gate') {
+        setMessage(`${label} needs parent approval.`);
+      } else {
+        setMessage(`${label} was blocked by KidOS safety policy.`);
+      }
+    } catch {
+      setMessage(`${label} stayed closed because protected browsing is unavailable.`);
+    }
+  }
 
   async function runSafeSearch(query: string) {
     setActive('browser');
@@ -103,27 +267,68 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
     setWorkspaceStatus('Preparing a safe workspace...');
     try {
       const plan = await api.planWorkspace(value);
+      setActiveWorkspace(plan);
+      setProjectId(undefined);
+      setProjectTitle(value.slice(0, 80));
+      setProjectContent(starterContent(plan, value));
       setWorkspaceStatus(`Safe workspace ready: ${plan.title}`);
     } catch {
       setWorkspaceStatus('KidOS could not prepare the workspace safely.');
     }
   }
 
-  function answerAi(query: string) {
+  async function saveProject() {
+    if (!activeWorkspace || !api.saveWorkspaceDocument) {
+      setWorkspaceStatus('Project saving is available in the installed KidOS Electron build.');
+      return;
+    }
+    setWorkspaceStatus('Saving project locally...');
+    try {
+      const saved = await api.saveWorkspaceDocument({
+        id: projectId,
+        kind: activeWorkspace.kind,
+        title: projectTitle.trim() || 'Untitled KidOS Project',
+        prompt: createValue,
+        content: projectContent,
+      });
+      setProjectId(saved.id);
+      setProjectTitle(saved.title);
+      setSavedProjects((current) => [saved, ...current.filter((project) => project.id !== saved.id)].slice(0, 50));
+      setWorkspaceStatus('Project saved safely on this computer.');
+    } catch {
+      setWorkspaceStatus('KidOS could not save this project.');
+    }
+  }
+
+  function openSavedProject(project: WorkspaceDocument) {
+    setActive('create');
+    setActiveWorkspace(workspacePlanForDocument(project));
+    setProjectId(project.id);
+    setProjectTitle(project.title);
+    setProjectContent(project.content);
+    setCreateValue(project.prompt);
+    setWorkspaceStatus('Saved project reopened.');
+  }
+
+  async function answerAi(query: string) {
     const q = query.trim();
     if (!q) return;
     setAiValue(q);
-    setAiAnswer(/space|planet/i.test(q)
-      ? 'Earth is one of eight planets orbiting our Sun. I can explain each planet in simple steps.'
-      : /math|\d/.test(q)
-        ? 'Break the problem into small steps, solve one step at a time, then check your answer.'
-        : /sky/i.test(q)
-          ? 'The sky looks blue because sunlight is scattered by gases in Earth’s atmosphere, and blue light scatters strongly.'
-          : 'KidOS AI keeps answers age-appropriate and inside the active safety rules.');
+    setAiAnswer('KidOS AI is checking the protected learning service...');
+    if (!api.askAi) {
+      setAiAnswer('KidOS AI is not connected in this build.');
+      return;
+    }
+    try {
+      const result = await api.askAi(q);
+      setAiAnswer(result.answer);
+    } catch {
+      setAiAnswer('KidOS AI could not answer safely right now. Try again later or ask a parent or teacher.');
+    }
   }
 
   function askAi() {
-    answerAi(aiValue);
+    void answerAi(aiValue);
   }
 
   async function requestParent() {
@@ -147,15 +352,15 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
       case 'home':
         return <KidOSHomeScreen status={status} onNavigate={setActive} />;
       case 'learn':
-        return <KidOSLearnScreen />;
+        return <KidOSLearnScreen statusMessage={learnStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setLearnStatus); }} />;
       case 'play':
-        return <KidOSPlayScreen />;
+        return <KidOSPlayScreen statusMessage={playStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setPlayStatus); }} />;
       case 'watch':
-        return <KidOSWatchScreen />;
+        return <KidOSWatchScreen statusMessage={watchStatus} onOpen={(label, url) => { void openProtectedModuleResource(label, url, setWatchStatus); }} />;
       case 'wellbeing':
-        return <KidOSWellbeingScreen />;
+        return <KidOSWellbeingScreen settings={wellbeing} usage={usageStatus} statusMessage={wellbeingStatus} onChange={setWellbeing} onSave={() => { void saveWellbeing(); }} />;
       case 'apps':
-        return <KidOSMyAppsScreen />;
+        return <KidOSMyAppsScreen apps={approvedApps} statusMessage={appsStatus} onRefresh={() => { void refreshApprovedApps(); }} onLaunch={(appId) => { void launchApprovedApp(appId); }} />;
       case 'browser':
         return (
           <KidOSSafeBrowserScreen
@@ -172,9 +377,18 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
           <KidOSCreateScreen
             value={createValue}
             statusMessage={workspaceStatus}
+            workspace={activeWorkspace}
+            projectId={projectId}
+            projectTitle={projectTitle}
+            projectContent={projectContent}
+            savedProjects={savedProjects}
             onValueChange={setCreateValue}
             onSubmit={() => { void createWorkspace(); }}
             onPrompt={(prompt) => { void createWorkspace(prompt); }}
+            onProjectTitleChange={setProjectTitle}
+            onProjectContentChange={setProjectContent}
+            onSaveProject={() => { void saveProject(); }}
+            onOpenProject={openSavedProject}
           />
         );
       case 'ai':
@@ -184,7 +398,7 @@ export default function KidOSHomeShell({ api, onOpenParentWorkspace }: { api: Ki
             answer={aiAnswer}
             onValueChange={setAiValue}
             onSubmit={askAi}
-            onSuggestion={answerAi}
+            onSuggestion={(prompt) => { void answerAi(prompt); }}
           />
         );
       case 'parent':

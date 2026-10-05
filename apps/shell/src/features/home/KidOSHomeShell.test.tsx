@@ -9,6 +9,11 @@ const api: KidOSApi = {
   async evaluateNavigation() { return 'require_parent'; },
   async evaluateDownload() { return 'require_parent'; },
   async guardianStatus() { return 'healthy'; },
+  async askAi(query) {
+    if (/planet|space/i.test(query)) return { available: true, answer: 'Earth is one of eight planets orbiting our Sun.' };
+    if (/math/i.test(query)) return { available: true, answer: 'Break the problem into small steps, solve one step at a time, then check your answer.' };
+    return { available: true, answer: 'KidOS AI safe test answer.' };
+  },
   async lockdownStatus() { return { state: 'unmanaged', capability }; },
   async configureWindowsLockdown(request) { return { state: 'preparing', capability, managedAccount: request.account }; },
   async requestParentMaintenanceUnlock() { return { grantedAt: '2026-09-03T00:45:00Z', expiresAt: '2026-09-03T01:00:00Z' }; },
@@ -50,6 +55,56 @@ describe('KidOSHomeShell', () => {
     expect(screen.getByTestId(testId)).toBeTruthy();
   });
 
+  it.each([
+    ['Learn', 'Math', 'khanacademy.org/math'],
+    ['Play', 'Puzzles', 'pbskids.org/games'],
+    ['Watch', 'Science', 'kids.youtube.com/search'],
+  ])('routes %s category actions through the protected browser', async (destination, action, expectedUrl) => {
+    const opened: string[] = [];
+    const allowApi: KidOSApi = {
+      ...api,
+      async evaluateNavigation() { return 'allow'; },
+      async openProtectedBrowser(url) { opened.push(url); },
+    };
+    render(<KidOSHomeShell api={allowApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination(destination);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(action) }));
+    expect(await screen.findByText(new RegExp(`${action} opened through KidOS Safe Browser`))).toBeTruthy();
+    expect(opened.some((url) => url.includes(expectedUrl))).toBe(true);
+  });
+
+  it('saves an editable Create project through the Electron project API contract', async () => {
+    let savedContent = '';
+    const createApi: KidOSApi = {
+      ...api,
+      async listWorkspaceDocuments() { return []; },
+      async saveWorkspaceDocument(document) {
+        savedContent = document.content;
+        return {
+          ...document,
+          id: 'project-1',
+          createdAt: '2026-10-04T12:00:00Z',
+          updatedAt: '2026-10-04T12:00:00Z',
+        };
+      },
+    };
+
+    render(<KidOSHomeShell api={createApi} onOpenParentWorkspace={() => undefined} />);
+    openHomeDestination('Create');
+    const prompt = screen.getByLabelText('Ask KidOS');
+    fireEvent.change(prompt, { target: { value: 'Write a moon story' } });
+    fireEvent.submit(prompt.closest('form')!);
+
+    expect(await screen.findByTestId('kidos-workspace-editor')).toBeTruthy();
+    const content = screen.getByLabelText('Project content');
+    fireEvent.change(content, { target: { value: 'Once upon a time on the Moon.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save project' }));
+
+    expect(await screen.findByText('Project saved safely on this computer.')).toBeTruthy();
+    expect(savedContent).toBe('Once upon a time on the Moon.');
+    expect(screen.getByText('Saved project')).toBeTruthy();
+  });
+
   it('creates a protected workspace through the existing planner API', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('Create');
@@ -69,20 +124,20 @@ describe('KidOSHomeShell', () => {
     expect(await screen.findByText('KidOS could not prepare the workspace safely.')).toBeTruthy();
   });
 
-  it('renders KidOS AI answers inside the dedicated safe module', () => {
+  it('renders KidOS AI answers from the protected backend inside the dedicated safe module', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('KidOS AI');
     const input = screen.getByLabelText('Ask KidOS AI');
     fireEvent.change(input, { target: { value: 'Tell me about planets' } });
     fireEvent.submit(input.closest('form')!);
-    expect(screen.getByText(/Earth is one of eight planets/)).toBeTruthy();
+    expect(await screen.findByText(/Earth is one of eight planets/)).toBeTruthy();
   });
 
-  it('supports child-friendly KidOS AI suggestion prompts', () => {
+  it('supports child-friendly KidOS AI suggestion prompts through the backend', async () => {
     render(<KidOSHomeShell api={api} onOpenParentWorkspace={() => undefined} />);
     openHomeDestination('KidOS AI');
     fireEvent.click(screen.getByRole('button', { name: 'Help me with math' }));
-    expect(screen.getByText(/Break the problem into small steps/)).toBeTruthy();
+    expect(await screen.findByText(/Break the problem into small steps/)).toBeTruthy();
   });
 
   it('routes safe search through policy evaluation and keeps require-parent closed', async () => {
